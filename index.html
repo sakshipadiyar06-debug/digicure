@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DigiCure Installer</title>
+<script type="module" src="https://cdn.jsdelivr.net/npm/esp-web-tools@10.1.1/dist/web/install-button.js?module"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;padding:28px 16px 56px;color:#fff4e1;font-family:system-ui,sans-serif;background:#261854}
+#scene{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none;
+background:linear-gradient(#261854,#783078 38%,#f06464 72%,#ffa046)}
+#night{position:absolute;inset:0;background:linear-gradient(#0b0820,#1c1240 55%,#2c1a52);animation:dawn 7s ease-out forwards}
+#stars{position:absolute;inset:0 0 40% 0;animation:dawn 5s ease-in forwards;
+background-image:radial-gradient(1.5px 1.5px at 20px 30px,#fff4dc,transparent),radial-gradient(1.5px 1.5px at 90px 80px,#fff4dc,transparent),
+radial-gradient(1px 1px at 150px 20px,#fff4dc,transparent),radial-gradient(1.5px 1.5px at 210px 110px,#fff4dc,transparent),
+radial-gradient(1px 1px at 60px 140px,#fff4dc,transparent),radial-gradient(1px 1px at 180px 170px,#fff4dc,transparent);
+background-size:240px 200px}
+#sunrise{position:absolute;left:50%;bottom:24%;width:180px;height:180px;margin-left:-90px;
+animation:rise 7s cubic-bezier(.2,.75,.25,1) forwards}
+#sun{width:100%;height:100%;border-radius:50%;background:#ffe28c;
+box-shadow:0 0 0 20px rgba(255,196,110,.45),0 0 0 42px rgba(255,170,90,.25),0 0 140px 70px rgba(255,170,90,.35);
+animation:pulse 4s ease-in-out 7s infinite}
+#hills{position:absolute;left:0;bottom:0;width:100%;height:30%}
+@keyframes dawn{to{opacity:0}}
+@keyframes rise{from{transform:translateY(75vh)}to{transform:translateY(0)}}
+@keyframes pulse{50%{transform:scale(1.05)}}
+@media (prefers-reduced-motion:reduce){#night,#stars{animation:none;opacity:0}#sunrise,#sun{animation:none}}
+main{max-width:720px;margin:auto}
+h1{margin:0 0 4px;font-size:2rem}
+.sub{opacity:.85;margin:0 0 18px}
+.card{background:rgba(38,22,72,.8);border-radius:16px;padding:18px;margin:14px 0}
+h2{margin:0 0 6px;font-size:1.1rem}
+p,li{line-height:1.5;font-size:.95rem}
+button{border:0;border-radius:10px;padding:11px 18px;font-size:1rem;cursor:pointer;background:#ffaa5a;color:#461c4e;font-weight:600}
+button:disabled{opacity:.5;cursor:default}
+button.del{background:#ff5060;color:#fff;padding:6px 12px;font-size:.85rem}
+input{width:100%;padding:11px;margin:4px 0 12px;border:0;border-radius:8px;font-size:1rem}
+.pill{display:inline-block;padding:4px 12px;border-radius:99px;background:#5a3a80;font-size:.85rem}
+.pill.ok{background:#2f8f5b}.pill.warn{background:#b8562a}
+table{width:100%;border-collapse:collapse}
+td{padding:8px 4px;border-bottom:1px solid rgba(255,244,225,.15)}
+.bar{height:8px;background:#5a3a80;border-radius:4px;overflow:hidden;margin-top:10px}
+.bar>div{height:100%;width:0;background:#ffaa5a}
+#log{font-size:.85rem;min-height:1.2em;margin-top:8px}
+small{opacity:.8}
+</style>
+</head>
+<body>
+<div id="scene" aria-hidden="true">
+<div id="night"></div><div id="stars"></div>
+<div id="sunrise"><div id="sun"></div></div>
+<svg id="hills" viewBox="0 0 1000 300" preserveAspectRatio="none">
+<path d="M0 300V190Q150 90 320 170T640 150T1000 120V300Z" fill="#5c2460"/>
+<path d="M0 300V245Q250 185 500 235T1000 215V300Z" fill="#341642"/>
+</svg>
+</div>
+<main>
+<h1>DigiCure</h1>
+<p class="sub">Install and manage your offline password vault from the browser. Your PIN and passwords never touch the internet.</p>
+<div id="nosupport" class="card" hidden>This needs Web Serial: use Chrome, Edge, Brave or Opera on a computer.</div>
+
+<div class="card">
+<h2>1 &middot; Flash MicroPython <small>(first time only)</small></h2>
+<p>Connect the ESP32-S3 over USB. This erases the board, including any saved vault.</p>
+<esp-web-install-button manifest="manifest.json">
+<button slot="activate">Flash MicroPython</button>
+<span slot="unsupported">Browser not supported.</span>
+<span slot="not-allowed">Open this page over HTTPS.</span>
+</esp-web-install-button>
+</div>
+
+<div class="card">
+<h2>2 &middot; Install / update the DigiCure app</h2>
+<p>Uploads <code>main.py</code> to the board and restarts it. Your vault is kept.</p>
+<button id="installApp">Install DigiCure app</button>
+<div class="bar"><div id="prog"></div></div>
+</div>
+
+<div class="card">
+<h2>3 &middot; Manage your vault</h2>
+<p><button id="connect">Connect device</button> <span id="status" class="pill">Not connected</span></p>
+<p><small>Log in by entering your PIN on the device itself. The website only unlocks its tools once the device is unlocked.</small></p>
+<div id="vault" hidden>
+<table id="list"></table>
+<h2 style="margin-top:18px">Add a password</h2>
+<input id="n" placeholder="Name (e.g. GitHub)" maxlength="24">
+<input id="u" placeholder="Username or email" maxlength="48">
+<input id="p" type="password" placeholder="Password" maxlength="64">
+<button id="add">Send to device</button>
+<p><small>Saving, and deleting, must be approved with a tap on the device.</small></p>
+</div>
+<div id="log"></div>
+</div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+if (!('serial' in navigator)) $('nosupport').hidden = false;
+
+let port, writer, rx = '', raw = false, waiters = [], pend = {}, busy = false, wasLocked = null;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const log = (t, bad) => { $('log').textContent = t; $('log').style.color = bad ? '#ff9aa4' : ''; };
+
+async function ensurePort() {
+  if (port && port.readable) return;
+  port = await navigator.serial.requestPort();
+  await port.open({ baudRate: 115200 });
+  writer = port.writable.getWriter();
+  readLoop();
+}
+async function readLoop() {
+  const reader = port.readable.getReader(), dec = new TextDecoder();
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      rx += dec.decode(value, { stream: true });
+      pump();
+    }
+  } catch (e) {}
+  reader.releaseLock();
+  port = null; writer = null;
+  setStatus(undefined);
+}
+function pump() {
+  waiters = waiters.filter(w => { if (w.re.test(rx)) { w.res(); return false; } return true; });
+  if (raw) return;
+  let i;
+  while ((i = rx.indexOf('\n')) >= 0) {
+    const line = rx.slice(0, i).trim(); rx = rx.slice(i + 1);
+    if (line.startsWith('DC{')) {
+      try { const m = JSON.parse(line.slice(2)); if (pend[m.r]) pend[m.r](m); } catch (e) {}
+    }
+  }
+}
+const write = s => writer.write(new TextEncoder().encode(s));
+function waitFor(re, ms) {
+  return new Promise((res, rej) => {
+    const t = setTimeout(() => rej(new Error('Device did not respond')), ms);
+    waiters.push({ re, res: () => { clearTimeout(t); res(); } });
+    pump();
+  });
+}
+function ask(obj, ms = 4000) {
+  return new Promise((res, rej) => {
+    const t = setTimeout(() => { delete pend[obj.c]; rej(new Error('No reply. Is the DigiCure app running?')); }, ms);
+    pend[obj.c] = m => { clearTimeout(t); delete pend[obj.c]; res(m); };
+    write('DC' + JSON.stringify(obj) + '\n');
+  });
+}
+
+/* ---------- step 2: upload main.py through the raw REPL ---------- */
+async function rawExec(code) {
+  rx = '';
+  await write(code); await write('\x04');
+  await waitFor(/OK[\s\S]*\x04[\s\S]*\x04>/, 20000);
+  const err = rx.split('\x04')[1];
+  if (err && err.trim()) throw new Error(err.trim().split('\n').pop());
+}
+$('installApp').onclick = async () => {
+  busy = true; $('installApp').disabled = true;
+  try {
+    await ensurePort();
+    let bytes;
+    try { bytes = new Uint8Array(await (await fetch('main.py', { cache: 'no-store' })).arrayBuffer()); }
+    catch (e) { throw new Error('main.py not found next to this page'); }
+    log('Stopping the running app...');
+    raw = true; rx = '';
+    await write('\x03\x03'); await sleep(400); rx = '';
+    await write('\x01');
+    await waitFor(/raw REPL; CTRL-B to exit\r\n>/, 5000);
+    await rawExec("import binascii as b\nf=open('main.py','wb')");
+    const CH = 768;
+    for (let o = 0; o < bytes.length; o += CH) {
+      const b64 = btoa(String.fromCharCode(...bytes.subarray(o, o + CH)));
+      await rawExec("f.write(b.a2b_base64('" + b64 + "'))");
+      $('prog').style.width = Math.round((o + CH) / bytes.length * 100) + '%';
+    }
+    await rawExec('f.close()');
+    $('prog').style.width = '100%';
+    await write('\x02'); await sleep(200);
+    raw = false; rx = '';
+    await write('\x04');
+    log('Installed. The device is restarting; enter your PIN on it.');
+  } catch (e) { raw = false; log(e.message, true); }
+  busy = false; $('installApp').disabled = false;
+};
+
+/* ---------- step 3: vault tools ---------- */
+function setStatus(m) {
+  const s = $('status');
+  if (m === undefined) { s.textContent = 'Not connected'; s.className = 'pill'; $('vault').hidden = true; return; }
+  if (m === null) { s.textContent = 'No DigiCure app detected'; s.className = 'pill warn'; $('vault').hidden = true; return; }
+  if (m.locked) { s.textContent = 'Locked: enter PIN on the device'; s.className = 'pill warn'; $('vault').hidden = true; wasLocked = true; return; }
+  s.textContent = 'Unlocked \u00b7 ' + m.n + ' entries'; s.className = 'pill ok'; $('vault').hidden = false;
+  if (wasLocked !== false) refresh();
+  wasLocked = false;
+}
+async function refresh() {
+  try {
+    const m = await ask({ c: 'list' });
+    const t = $('list'); t.innerHTML = '';
+    if (!m.items || !m.items.length) { t.innerHTML = '<tr><td>No passwords yet.</td></tr>'; return; }
+    m.items.sort((a, b) => a.n.toLowerCase().localeCompare(b.n.toLowerCase())).forEach(it => {
+      const tr = t.insertRow();
+      tr.insertCell().textContent = (it.f ? '\u2605 ' : '') + it.n;
+      const u = tr.insertCell(); u.textContent = it.u; u.style.opacity = .75;
+      const b = document.createElement('button'); b.className = 'del'; b.textContent = 'Delete';
+      b.onclick = () => del(it.i, it.n);
+      tr.insertCell().appendChild(b);
+    });
+  } catch (e) { log(e.message, true); }
+}
+async function del(i, name) {
+  busy = true; log('Confirm deleting "' + name + '" on the device...');
+  try {
+    const m = await ask({ c: 'del', i }, 120000);
+    log(m.err ? 'Device says: ' + m.err : m.ok ? 'Deleted.' : 'Cancelled on device.', !!m.err);
+  } catch (e) { log(e.message, true); }
+  busy = false; refresh();
+}
+$('connect').onclick = async () => {
+  try { await ensurePort(); log('Connected.'); poll(); } catch (e) { log(e.message, true); }
+};
+$('add').onclick = async () => {
+  const n = $('n').value.trim(), p = $('p').value;
+  if (!n || !p) { log('Name and password are required.', true); return; }
+  busy = true; $('add').disabled = true; log('Tap SAVE on the device to approve...');
+  try {
+    const m = await ask({ c: 'add', n, u: $('u').value.trim(), p }, 120000);
+    if (m.err) log('Device says: ' + m.err, true);
+    else if (m.ok) { log('Saved on device.'); $('n').value = $('u').value = $('p').value = ''; }
+    else log('Discarded on device.');
+  } catch (e) { log(e.message, true); }
+  busy = false; $('add').disabled = false; refresh();
+};
+async function poll() {
+  if (!port || raw || busy) return;
+  try { setStatus(await ask({ c: 'hello' }, 1800)); } catch (e) { setStatus(null); }
+}
+setInterval(poll, 2500);
+</script>
+</body>
+</html>
