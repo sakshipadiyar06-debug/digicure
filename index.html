@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>DigiCure - Password Vault</title>
+  <title>DigiCure - Hardware Password Vault</title>
   
   <!-- Typography & FontAwesome Icons -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -16,7 +16,6 @@
 
   <style>
     :root {
-      /* Dynamic Atmospheric Spectrum Tokens */
       --dawn-deep-indigo: #070312;
       --dawn-purple: #180928;
       --dawn-crimson: #4a0d2a;
@@ -26,7 +25,6 @@
       --sunrise-gold: #fcc95f;
       --sunrise-hot-core: #ffffff;
 
-      /* Refined Glassmorphism & Light Probe Tokens */
       --glass-bg: rgba(14, 8, 24, 0.55);
       --glass-hover: rgba(30, 16, 48, 0.75);
       --glass-border: rgba(252, 201, 95, 0.16);
@@ -45,11 +43,7 @@
       --font-mono: 'JetBrains Mono', monospace;
     }
 
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       font-family: var(--font-main);
@@ -61,371 +55,129 @@
       user-select: none;
     }
 
-    /* Fullscreen Optics Canvas for Photorealistic Atmospheric Sunrise */
-    #optics-canvas {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      z-index: 0;
-      pointer-events: none;
-    }
+    #optics-canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 0; pointer-events: none; }
+    #lens-flare-layer { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
 
-    /* Optical Lens Flare Overlay Element */
-    #lens-flare-layer {
-      position: fixed;
-      inset: 0;
-      z-index: 2;
-      pointer-events: none;
-    }
-
-    /* Clean, Cinematic Smooth Mountain Horizon Lines */
-    .horizon-container {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      width: 100%;
-      height: 48vh;
-      pointer-events: none;
-      z-index: 1;
-      overflow: hidden;
-    }
-
-    .mountain-layer {
-      position: absolute;
-      bottom: -2px;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      will-change: transform;
-      transition: transform 0.2s ease-out;
-    }
-
-    /* Distant mist-shrouded ridge line */
-    .mountain-far {
-      opacity: 0.65;
-      filter: blur(1px);
-    }
-
-    /* Mid-distance atmospheric ridge */
-    .mountain-mid {
-      opacity: 0.85;
-      filter: blur(0.2px);
-    }
-
-    /* Foreground smooth ridge with fog-blend gradient */
-    .mountain-front {
-      opacity: 0.98;
-    }
-
-    /* Bottom subtle mist fade to ground UI */
+    .horizon-container { position: fixed; bottom: 0; left: 0; width: 100%; height: 48vh; pointer-events: none; z-index: 1; overflow: hidden; }
+    .mountain-layer { position: absolute; bottom: -2px; left: 0; width: 100%; height: 100%; will-change: transform; transition: transform 0.2s ease-out; }
+    .mountain-far { opacity: 0.65; filter: blur(1px); }
+    .mountain-mid { opacity: 0.85; filter: blur(0.2px); }
+    .mountain-front { opacity: 0.98; }
     .horizon-fog-bottom {
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      width: 100%;
-      height: 25%;
+      position: absolute; bottom: 0; left: 0; width: 100%; height: 25%;
       background: linear-gradient(to top, rgba(7, 3, 18, 0.95) 0%, rgba(7, 3, 18, 0.5) 50%, transparent 100%);
       pointer-events: none;
     }
 
-    .app-container {
-      position: relative;
-      z-index: 10;
-      max-width: 880px;
-      margin: 0 auto;
-      padding: 45px 20px 120px;
-      perspective: 1200px;
-    }
+    .app-container { position: relative; z-index: 10; max-width: 880px; margin: 0 auto; padding: 45px 20px 120px; perspective: 1200px; }
 
-    header {
-      text-align: center;
-      margin-bottom: 42px;
-      animation: fadeInDown 1s cubic-bezier(0.16, 1, 0.3, 1);
-    }
+    header { text-align: center; margin-bottom: 42px; animation: fadeInDown 1s cubic-bezier(0.16, 1, 0.3, 1); }
 
     .brand-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      padding: 8px 22px;
-      background: rgba(255, 255, 255, 0.07);
-      border: 1px solid rgba(252, 201, 95, 0.35);
-      border-radius: 30px;
-      font-size: 0.82rem;
-      font-weight: 700;
-      letter-spacing: 1px;
-      color: var(--sunrise-gold);
-      margin-bottom: 20px;
-      backdrop-filter: blur(20px);
+      display: inline-flex; align-items: center; gap: 10px; padding: 8px 22px;
+      background: rgba(255, 255, 255, 0.07); border: 1px solid rgba(252, 201, 95, 0.35);
+      border-radius: 30px; font-size: 0.82rem; font-weight: 700; letter-spacing: 1px;
+      color: var(--sunrise-gold); margin-bottom: 20px; backdrop-filter: blur(20px);
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
       transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
     }
-
-    .brand-badge:hover {
-      transform: translateY(-2px) scale(1.03);
-      border-color: var(--sunrise-gold);
-      box-shadow: 0 12px 35px rgba(247, 152, 54, 0.35);
-    }
-
-    .brand-badge i {
-      color: var(--sunrise-amber);
-    }
+    .brand-badge:hover { transform: translateY(-2px) scale(1.03); border-color: var(--sunrise-gold); box-shadow: 0 12px 35px rgba(247, 152, 54, 0.35); }
+    .brand-badge i { color: var(--sunrise-amber); }
 
     h1.main-title {
-      font-size: 4rem;
-      font-weight: 800;
-      letter-spacing: -2px;
+      font-size: 4rem; font-weight: 800; letter-spacing: -2px;
       background: linear-gradient(135deg, #ffffff 0%, #fff2e0 30%, var(--sunrise-gold) 65%, var(--sunrise-orange) 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      margin-bottom: 14px;
-      text-shadow: 0 12px 50px rgba(242, 98, 34, 0.35);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      margin-bottom: 14px; text-shadow: 0 12px 50px rgba(242, 98, 34, 0.35);
     }
 
-    .subtitle {
-      font-size: 1.12rem;
-      color: var(--text-muted);
-      max-width: 640px;
-      margin: 0 auto 22px;
-      line-height: 1.65;
-      font-weight: 400;
-    }
+    .subtitle { font-size: 1.12rem; color: var(--text-muted); max-width: 640px; margin: 0 auto 22px; line-height: 1.65; font-weight: 400; }
 
     .sunrise-time-controller {
-      display: inline-flex;
-      align-items: center;
-      gap: 14px;
-      background: rgba(10, 5, 20, 0.7);
-      border: 1px solid var(--glass-border);
-      padding: 12px 24px;
-      border-radius: 40px;
-      backdrop-filter: blur(20px);
-      margin-top: 10px;
-      box-shadow: 0 12px 35px rgba(0, 0, 0, 0.45);
+      display: inline-flex; align-items: center; gap: 14px;
+      background: rgba(10, 5, 20, 0.7); border: 1px solid var(--glass-border);
+      padding: 12px 24px; border-radius: 40px; backdrop-filter: blur(20px);
+      margin-top: 10px; box-shadow: 0 12px 35px rgba(0, 0, 0, 0.45);
       transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     }
-
-    .sunrise-time-controller:hover {
-      border-color: rgba(252, 201, 95, 0.45);
-      box-shadow: 0 14px 40px rgba(242, 98, 34, 0.25);
-      transform: translateY(-2px);
-    }
-
-    .sunrise-time-controller label {
-      font-size: 0.85rem;
-      font-weight: 700;
-      color: var(--sunrise-gold);
-      letter-spacing: 0.5px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
+    .sunrise-time-controller:hover { border-color: rgba(252, 201, 95, 0.45); box-shadow: 0 14px 40px rgba(242, 98, 34, 0.25); transform: translateY(-2px); }
+    .sunrise-time-controller label { font-size: 0.85rem; font-weight: 700; color: var(--sunrise-gold); letter-spacing: 0.5px; display: flex; align-items: center; gap: 8px; }
 
     .sun-slider {
-      -webkit-appearance: none;
-      width: 190px;
-      height: 6px;
-      border-radius: 10px;
-      background: linear-gradient(90deg, #180928, #f26222, #fcc95f);
-      outline: none;
-      cursor: pointer;
+      -webkit-appearance: none; width: 190px; height: 6px; border-radius: 10px;
+      background: linear-gradient(90deg, #180928, #f26222, #fcc95f); outline: none; cursor: pointer;
     }
-
     .sun-slider::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      width: 20px;
-      height: 20px;
-      border-radius: 50%;
-      background: #ffffff;
-      box-shadow: 0 0 14px var(--sunrise-gold), 0 0 24px var(--sunrise-orange);
-      cursor: pointer;
+      -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #ffffff;
+      box-shadow: 0 0 14px var(--sunrise-gold), 0 0 24px var(--sunrise-orange); cursor: pointer;
       transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.2s ease;
     }
-
-    .sun-slider::-webkit-slider-thumb:hover {
-      transform: scale(1.35);
-      box-shadow: 0 0 20px #ffffff, 0 0 35px var(--sunrise-gold);
-    }
+    .sun-slider::-webkit-slider-thumb:hover { transform: scale(1.35); box-shadow: 0 0 20px #ffffff, 0 0 35px var(--sunrise-gold); }
 
     .warning-card {
-      background: rgba(242, 98, 34, 0.16);
-      border: 1px solid rgba(242, 98, 34, 0.4);
-      backdrop-filter: blur(14px);
-      border-radius: var(--radius-md);
-      padding: 14px 20px;
-      margin-top: 22px;
-      color: #fca5a5;
-      font-size: 0.92rem;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 12px;
+      background: rgba(242, 98, 34, 0.16); border: 1px solid rgba(242, 98, 34, 0.4);
+      backdrop-filter: blur(14px); border-radius: var(--radius-md); padding: 14px 20px; margin-top: 22px;
+      color: #fca5a5; font-size: 0.92rem; display: flex; align-items: center; justify-content: center; gap: 12px;
       box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
     }
 
-    /* 3D Interactive Tilt Card with Sunrise Reflection */
     .step-card {
       background: radial-gradient(800px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(252, 201, 95, 0.12), var(--glass-bg) 75%);
-      backdrop-filter: blur(30px);
-      -webkit-backdrop-filter: blur(30px);
-      border: 1px solid var(--glass-border);
-      border-radius: var(--radius-xl);
-      padding: 36px;
-      margin-bottom: 30px;
+      backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px);
+      border: 1px solid var(--glass-border); border-radius: var(--radius-xl);
+      padding: 36px; margin-bottom: 30px;
       box-shadow: 0 20px 45px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.15);
       transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.4s ease, box-shadow 0.4s ease, background 0.4s ease;
-      position: relative;
-      overflow: hidden;
-      transform-style: preserve-3d;
-      will-change: transform;
+      position: relative; overflow: hidden; transform-style: preserve-3d; will-change: transform;
     }
-
     .step-card::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 1.5px;
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1.5px;
       background: linear-gradient(90deg, transparent, var(--sunrise-gold), var(--sunrise-amber), transparent);
-      opacity: 0.4;
-      transition: opacity 0.3s ease;
+      opacity: 0.4; transition: opacity 0.3s ease;
     }
-
-    /* Dynamic Glint Sweep Overlay on Hover */
     .step-card::after {
-      content: '';
-      position: absolute;
-      inset: -100%;
+      content: ''; position: absolute; inset: -100%;
       background: radial-gradient(circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(255, 255, 255, 0.1) 0%, transparent 50%);
-      opacity: 0;
-      transition: opacity 0.3s ease;
-      pointer-events: none;
+      opacity: 0; transition: opacity 0.3s ease; pointer-events: none;
     }
-
     .step-card:hover {
-      border-color: var(--glass-border-glow);
-      box-shadow: 0 30px 70px rgba(0, 0, 0, 0.6), 0 0 40px rgba(247, 152, 54, 0.28);
+      border-color: var(--glass-border-glow); box-shadow: 0 30px 70px rgba(0, 0, 0, 0.6), 0 0 40px rgba(247, 152, 54, 0.28);
       background: radial-gradient(800px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(252, 201, 95, 0.18), var(--glass-hover) 80%);
     }
+    .step-card:hover::before { opacity: 1; }
+    .step-card:hover::after { opacity: 1; }
 
-    .step-card:hover::before {
-      opacity: 1;
-    }
-
-    .step-card:hover::after {
-      opacity: 1;
-    }
-
-    .card-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 14px;
-    }
-
-    .step-number-title {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
-
+    .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+    .step-number-title { display: flex; align-items: center; gap: 14px; }
     .step-number {
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
+      width: 40px; height: 40px; border-radius: 50%;
       background: linear-gradient(135deg, var(--sunrise-amber), var(--sunrise-orange));
-      color: #fff;
-      font-weight: 800;
-      font-size: 1.05rem;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 4px 20px rgba(242, 98, 34, 0.5);
-      transition: transform 0.3s ease, box-shadow 0.3s ease;
+      color: #fff; font-weight: 800; font-size: 1.05rem; display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 20px rgba(242, 98, 34, 0.5); transition: transform 0.3s ease, box-shadow 0.3s ease;
     }
+    .step-card:hover .step-number { transform: scale(1.1) rotate(-5deg); box-shadow: 0 6px 25px rgba(247, 152, 54, 0.7); }
+    .card-title { font-size: 1.4rem; font-weight: 700; color: #ffffff; letter-spacing: -0.3px; }
+    .card-desc { color: var(--text-dim); font-size: 0.98rem; line-height: 1.65; margin-bottom: 26px; }
 
-    .step-card:hover .step-number {
-      transform: scale(1.1) rotate(-5deg);
-      box-shadow: 0 6px 25px rgba(247, 152, 54, 0.7);
-    }
-
-    .card-title {
-      font-size: 1.4rem;
-      font-weight: 700;
-      color: #ffffff;
-      letter-spacing: -0.3px;
-    }
-
-    .card-desc {
-      color: var(--text-dim);
-      font-size: 0.98rem;
-      line-height: 1.65;
-      margin-bottom: 26px;
-    }
-
-    /* Modern Hover State Buttons */
     .btn {
       background: linear-gradient(135deg, var(--sunrise-amber) 0%, var(--sunrise-orange) 100%);
-      color: #ffffff;
-      border: none;
-      padding: 14px 28px;
-      font-size: 0.95rem;
-      font-weight: 700;
-      font-family: var(--font-main);
-      border-radius: var(--radius-sm);
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-      box-shadow: 0 8px 24px rgba(242, 98, 34, 0.38);
-      position: relative;
-      overflow: hidden;
-      text-decoration: none;
+      color: #ffffff; border: none; padding: 14px 28px; font-size: 0.95rem; font-weight: 700;
+      font-family: var(--font-main); border-radius: var(--radius-sm); cursor: pointer;
+      display: inline-flex; align-items: center; gap: 10px;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); box-shadow: 0 8px 24px rgba(242, 98, 34, 0.38);
+      position: relative; overflow: hidden; text-decoration: none;
     }
-
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; filter: none; transform: none !important; }
     .btn::after {
-      content: '';
-      position: absolute;
-      top: -50%;
-      left: -60%;
-      width: 50%;
-      height: 200%;
+      content: ''; position: absolute; top: -50%; left: -60%; width: 50%; height: 200%;
       background: linear-gradient(60deg, transparent, rgba(255, 255, 255, 0.4), transparent);
-      transform: rotate(25deg);
-      transition: all 0.6s ease;
+      transform: rotate(25deg); transition: all 0.6s ease;
     }
-
-    .btn:hover::after {
-      left: 130%;
-    }
-
-    .btn:hover {
-      transform: translateY(-3px) scale(1.02);
-      box-shadow: 0 12px 35px rgba(242, 98, 34, 0.6);
-      filter: brightness(1.1);
-    }
-
-    .btn:active {
-      transform: translateY(0) scale(0.98);
-    }
-
-    .btn-secondary {
-      background: rgba(255, 255, 255, 0.08);
-      color: var(--text-main);
-      border: 1px solid var(--glass-border);
-      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.25);
-    }
-
-    .btn-secondary:hover {
-      background: rgba(255, 255, 255, 0.16);
-      border-color: rgba(252, 201, 95, 0.4);
-      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
-      color: #ffffff;
-    }
+    .btn:hover::after { left: 130%; }
+    .btn:hover { transform: translateY(-3px) scale(1.02); box-shadow: 0 12px 35px rgba(242, 98, 34, 0.6); filter: brightness(1.1); }
+    .btn:active { transform: translateY(0) scale(0.98); }
+    .btn-secondary { background: rgba(255, 255, 255, 0.08); color: var(--text-main); border: 1px solid var(--glass-border); box-shadow: 0 4px 18px rgba(0, 0, 0, 0.25); }
+    .btn-secondary:hover { background: rgba(255, 255, 255, 0.16); border-color: rgba(252, 201, 95, 0.4); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4); color: #ffffff; }
 
     esp-web-install-button {
       --esp-tools-button-color: linear-gradient(135deg, var(--sunrise-amber) 0%, var(--sunrise-orange) 100%);
@@ -436,329 +188,86 @@
     }
 
     .status-panel {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 18px;
-      background: rgba(0, 0, 0, 0.35);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: var(--radius-lg);
-      padding: 20px 24px;
-      margin-bottom: 26px;
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 18px;
+      background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: var(--radius-lg); padding: 20px 24px; margin-bottom: 26px;
       transition: border-color 0.3s ease, box-shadow 0.3s ease;
     }
-
-    .status-panel:hover {
-      border-color: rgba(252, 201, 95, 0.3);
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-    }
-
-    .device-chip-info {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
-
+    .status-panel:hover { border-color: rgba(252, 201, 95, 0.3); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4); }
+    .device-chip-info { display: flex; align-items: center; gap: 16px; }
     .chip-icon {
-      width: 48px;
-      height: 48px;
-      border-radius: var(--radius-md);
-      background: rgba(252, 201, 95, 0.12);
-      border: 1px solid rgba(252, 201, 95, 0.3);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1.4rem;
-      color: var(--sunrise-gold);
+      width: 48px; height: 48px; border-radius: var(--radius-md);
+      background: rgba(252, 201, 95, 0.12); border: 1px solid rgba(252, 201, 95, 0.3);
+      display: flex; align-items: center; justify-content: center; font-size: 1.4rem; color: var(--sunrise-gold);
       transition: all 0.3s ease;
     }
+    .chip-icon.active { background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.4); color: #10b981; transform: scale(1.05); }
+    .status-badge { display: inline-flex; align-items: center; gap: 10px; padding: 6px 16px; border-radius: 30px; font-size: 0.85rem; font-weight: 600; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.12); }
+    .status-dot { width: 10px; height: 10px; border-radius: 50%; background-color: var(--sunrise-gold); box-shadow: 0 0 10px var(--sunrise-gold); }
+    .status-badge.connected .status-dot { background-color: #10b981; box-shadow: 0 0 14px #10b981; animation: pulseGlow 2s infinite; }
+    .status-badge.unlocked .status-dot { background-color: #38bdf8; box-shadow: 0 0 14px #38bdf8; }
+    @keyframes pulseGlow { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.35); opacity: 0.7; } }
 
-    .chip-icon.active {
-      background: rgba(16, 185, 129, 0.15);
-      border-color: rgba(16, 185, 129, 0.4);
-      color: #10b981;
-      transform: scale(1.05);
-    }
+    .serial-wave-canvas { width: 130px; height: 32px; opacity: 0.6; transition: opacity 0.3s ease; }
+    .serial-wave-canvas.active { opacity: 1; }
 
-    .status-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      padding: 6px 16px;
-      border-radius: 30px;
-      font-size: 0.85rem;
-      font-weight: 600;
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-    }
+    .progress-bar-container { width: 100%; height: 8px; background: rgba(0, 0, 0, 0.4); border-radius: 10px; overflow: hidden; margin: 18px 0; display: none; }
+    .progress-bar-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--sunrise-amber), var(--sunrise-orange), var(--sunrise-gold)); border-radius: 10px; transition: width 0.25s ease; }
 
-    .status-dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background-color: var(--sunrise-gold);
-      box-shadow: 0 0 10px var(--sunrise-gold);
-    }
+    .pin-box { background: rgba(0, 0, 0, 0.38); border: 1px solid var(--glass-border); border-radius: var(--radius-lg); padding: 26px; text-align: center; margin-top: 22px; animation: fadeIn 0.4s ease; }
+    .pin-dots { display: flex; justify-content: center; gap: 14px; margin: 20px 0; }
+    .pin-dot { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--sunrise-gold); transition: all 0.25s ease; }
+    .pin-dot.filled { background: var(--sunrise-gold); box-shadow: 0 0 16px var(--sunrise-gold); transform: scale(1.15); }
+    #pin-input { max-width: 220px; margin: 0 auto 14px; text-align: center; letter-spacing: 10px; font-size: 1.3rem; font-family: var(--font-mono); }
 
-    .status-badge.connected .status-dot {
-      background-color: #10b981;
-      box-shadow: 0 0 14px #10b981;
-      animation: pulseGlow 2s infinite;
-    }
-
-    .status-badge.unlocked .status-dot {
-      background-color: #38bdf8;
-      box-shadow: 0 0 14px #38bdf8;
-    }
-
-    @keyframes pulseGlow {
-      0%, 100% { transform: scale(1); opacity: 1; }
-      50% { transform: scale(1.35); opacity: 0.7; }
-    }
-
-    .serial-wave-canvas {
-      width: 130px;
-      height: 32px;
-      opacity: 0.6;
-      transition: opacity 0.3s ease;
-    }
-
-    .serial-wave-canvas.active {
-      opacity: 1;
-    }
-
-    .progress-bar-container {
-      width: 100%;
-      height: 8px;
-      background: rgba(0, 0, 0, 0.4);
-      border-radius: 10px;
-      overflow: hidden;
-      margin: 18px 0;
-      display: none;
-    }
-
-    .progress-bar-fill {
-      height: 100%;
-      width: 0%;
-      background: linear-gradient(90deg, var(--sunrise-amber), var(--sunrise-orange), var(--sunrise-gold));
-      border-radius: 10px;
-      transition: width 0.25s ease;
-    }
-
-    .pin-box {
-      background: rgba(0, 0, 0, 0.38);
-      border: 1px solid var(--glass-border);
-      border-radius: var(--radius-lg);
-      padding: 26px;
-      text-align: center;
-      margin-top: 22px;
-      animation: fadeIn 0.4s ease;
-    }
-
-    .pin-dots {
-      display: flex;
-      justify-content: center;
-      gap: 14px;
-      margin: 20px 0;
-    }
-
-    .pin-dot {
-      width: 18px;
-      height: 18px;
-      border-radius: 50%;
-      border: 2px solid var(--sunrise-gold);
-      transition: all 0.25s ease;
-    }
-
-    .pin-dot.filled {
-      background: var(--sunrise-gold);
-      box-shadow: 0 0 16px var(--sunrise-gold);
-      transform: scale(1.15);
-    }
-
-    .vault-controls {
-      display: flex;
-      gap: 14px;
-      margin-bottom: 22px;
-      flex-wrap: wrap;
-    }
-
-    .search-input-wrap {
-      flex: 1;
-      min-width: 220px;
-      position: relative;
-    }
-
-    .search-input-wrap i {
-      position: absolute;
-      left: 16px;
-      top: 50%;
-      transform: translateY(-50%);
-      color: var(--text-dim);
-      transition: color 0.3s ease;
-    }
-
-    .search-input-wrap:hover i, input[type="text"]:focus + i {
-      color: var(--sunrise-gold);
-    }
+    .vault-controls { display: flex; gap: 14px; margin-bottom: 22px; flex-wrap: wrap; }
+    .search-input-wrap { flex: 1; min-width: 220px; position: relative; }
+    .search-input-wrap i { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: var(--text-dim); transition: color 0.3s ease; }
+    .search-input-wrap:hover i, input[type="text"]:focus + i { color: var(--sunrise-gold); }
 
     input[type="text"], input[type="password"] {
-      width: 100%;
-      background: rgba(0, 0, 0, 0.38);
-      border: 1px solid var(--glass-border);
-      color: var(--text-main);
-      padding: 13px 18px 13px 46px;
-      border-radius: var(--radius-sm);
-      outline: none;
-      font-family: var(--font-main);
-      font-size: 0.95rem;
-      transition: all 0.3s ease;
+      width: 100%; background: rgba(0, 0, 0, 0.38); border: 1px solid var(--glass-border); color: var(--text-main);
+      padding: 13px 18px 13px 46px; border-radius: var(--radius-sm); outline: none;
+      font-family: var(--font-main); font-size: 0.95rem; transition: all 0.3s ease;
     }
+    .no-icon input[type="text"], input[type="password"].no-icon { padding-left: 18px; }
+    input:focus { border-color: var(--sunrise-gold); box-shadow: 0 0 20px rgba(252, 201, 95, 0.3); background: rgba(0, 0, 0, 0.5); }
 
-    .no-icon input[type="text"], input[type="password"].no-icon {
-      padding-left: 18px;
-    }
-
-    input:focus {
-      border-color: var(--sunrise-gold);
-      box-shadow: 0 0 20px rgba(252, 201, 95, 0.3);
-      background: rgba(0, 0, 0, 0.5);
-    }
-
-    .table-container {
-      overflow-x: auto;
-      border-radius: var(--radius-md);
-      border: 1px solid var(--glass-border);
-      background: rgba(0, 0, 0, 0.3);
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      text-align: left;
-    }
-
-    th {
-      background: rgba(0, 0, 0, 0.55);
-      padding: 16px 20px;
-      font-size: 0.8rem;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      color: var(--sunrise-gold);
-      font-weight: 700;
-      border-bottom: 1px solid var(--glass-border);
-    }
-
-    td {
-      padding: 18px 20px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-      font-size: 0.95rem;
-      color: var(--text-muted);
-      transition: background 0.2s ease, color 0.2s ease;
-    }
-
-    tr:last-child td {
-      border-bottom: none;
-    }
-
-    tr:hover td {
-      background: rgba(252, 201, 95, 0.06);
-      color: var(--text-main);
-    }
-
-    .pwd-field {
-      font-family: var(--font-mono);
-      letter-spacing: 2px;
-    }
+    .table-container { overflow-x: auto; border-radius: var(--radius-md); border: 1px solid var(--glass-border); background: rgba(0, 0, 0, 0.3); }
+    table { width: 100%; border-collapse: collapse; text-align: left; }
+    th { background: rgba(0, 0, 0, 0.55); padding: 16px 20px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; color: var(--sunrise-gold); font-weight: 700; border-bottom: 1px solid var(--glass-border); }
+    td { padding: 18px 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); font-size: 0.95rem; color: var(--text-muted); transition: background 0.2s ease, color 0.2s ease; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(252, 201, 95, 0.06); color: var(--text-main); }
+    .pwd-field { font-family: var(--font-mono); letter-spacing: 2px; }
 
     .action-icon-btn {
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      color: var(--text-muted);
-      width: 36px;
-      height: 36px;
-      border-radius: var(--radius-sm);
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
+      background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.12); color: var(--text-muted);
+      width: 36px; height: 36px; border-radius: var(--radius-sm); cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center;
       transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
     }
-
-    .action-icon-btn:hover {
-      background: rgba(252, 201, 95, 0.25);
-      color: var(--sunrise-gold);
-      border-color: rgba(252, 201, 95, 0.6);
-      transform: translateY(-2px) scale(1.08);
-      box-shadow: 0 4px 15px rgba(247, 152, 54, 0.3);
-    }
+    .action-icon-btn:hover { background: rgba(252, 201, 95, 0.25); color: var(--sunrise-gold); border-color: rgba(252, 201, 95, 0.6); transform: translateY(-2px) scale(1.08); box-shadow: 0 4px 15px rgba(247, 152, 54, 0.3); }
 
     .console-terminal {
-      background: #05020a;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: var(--radius-md);
-      padding: 16px;
-      font-family: var(--font-mono);
-      font-size: 0.84rem;
-      color: #a7f3d0;
-      height: 120px;
-      overflow-y: auto;
-      margin-top: 20px;
-      box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.8);
+      background: #05020a; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: var(--radius-md);
+      padding: 16px; font-family: var(--font-mono); font-size: 0.84rem; color: #a7f3d0;
+      height: 120px; overflow-y: auto; margin-top: 20px; box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.8);
     }
+    .console-line { margin-bottom: 5px; line-height: 1.45; }
+    .console-line .ts { color: var(--text-dim); margin-right: 8px; }
 
-    .console-line {
-      margin-bottom: 5px;
-      line-height: 1.45;
-    }
-
-    .console-line .ts {
-      color: var(--text-dim);
-      margin-right: 8px;
-    }
-
-    #toast-container {
-      position: fixed;
-      bottom: 28px;
-      right: 28px;
-      z-index: 1000;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      pointer-events: none;
-    }
-
+    #toast-container { position: fixed; bottom: 28px; right: 28px; z-index: 1000; display: flex; flex-direction: column; gap: 12px; pointer-events: none; }
     .toast {
-      pointer-events: auto;
-      background: rgba(16, 8, 28, 0.95);
-      border: 1px solid var(--sunrise-amber);
-      color: #ffffff;
-      padding: 16px 24px;
-      border-radius: var(--radius-md);
+      pointer-events: auto; background: rgba(16, 8, 28, 0.95); border: 1px solid var(--sunrise-amber); color: #ffffff;
+      padding: 16px 24px; border-radius: var(--radius-md);
       box-shadow: 0 12px 35px rgba(0, 0, 0, 0.7), 0 0 22px rgba(247, 152, 54, 0.35);
-      backdrop-filter: blur(20px);
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      font-size: 0.94rem;
+      backdrop-filter: blur(20px); display: flex; align-items: center; gap: 14px; font-size: 0.94rem;
       animation: toastIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     }
-
-    @keyframes toastIn {
-      from { transform: translateX(100%) scale(0.9); opacity: 0; }
-      to { transform: translateX(0) scale(1); opacity: 1; }
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(8px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    @keyframes fadeInDown {
-      from { opacity: 0; transform: translateY(-18px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
+    @keyframes toastIn { from { transform: translateX(100%) scale(0.9); opacity: 0; } to { transform: translateX(0) scale(1); opacity: 1; } }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes fadeInDown { from { opacity: 0; transform: translateY(-18px); } to { opacity: 1; transform: translateY(0); } }
 
     @media (max-width: 640px) {
       h1.main-title { font-size: 2.6rem; }
@@ -770,15 +279,10 @@
 </head>
 <body>
 
-  <!-- Fullscreen Photorealistic Sunrise Optics Canvas -->
   <canvas id="optics-canvas"></canvas>
-
-  <!-- Interactive Optical Lens Flare Overlay Canvas -->
   <canvas id="lens-flare-layer"></canvas>
 
-  <!-- Clean, Photorealistic Layered Mountain Ridge Horizon -->
   <div class="horizon-container">
-    <!-- Far Mountain Ridge Line with Soft Atmospheric Haze -->
     <svg class="mountain-layer mountain-far" viewBox="0 0 1400 320" preserveAspectRatio="none">
       <defs>
         <linearGradient id="farMountainGrad" x1="0" y1="0" x2="0" y2="1">
@@ -788,8 +292,6 @@
       </defs>
       <path fill="url(#farMountainGrad)" d="M0,320 L0,140 Q220,70 480,130 T960,80 Q1220,120 1400,90 L1400,320 Z"></path>
     </svg>
-
-    <!-- Mid Mountain Ridge Line -->
     <svg class="mountain-layer mountain-mid" viewBox="0 0 1400 320" preserveAspectRatio="none">
       <defs>
         <linearGradient id="midMountainGrad" x1="0" y1="0" x2="0" y2="1">
@@ -799,8 +301,6 @@
       </defs>
       <path fill="url(#midMountainGrad)" d="M0,320 L0,180 C260,110 460,200 720,130 C980,60 1200,160 1400,120 L1400,320 Z"></path>
     </svg>
-
-    <!-- Foreground Soft Scenic Smooth Ridge -->
     <svg class="mountain-layer mountain-front" viewBox="0 0 1400 320" preserveAspectRatio="none">
       <defs>
         <linearGradient id="frontMountainGrad" x1="0" y1="0" x2="0" y2="1">
@@ -810,12 +310,9 @@
       </defs>
       <path fill="url(#frontMountainGrad)" d="M0,320 L0,230 Q320,180 640,220 T1280,190 Q1350,195 1400,210 L1400,320 Z"></path>
     </svg>
-
-    <!-- Mist overlay fade blending bottom edge smoothly -->
     <div class="horizon-fog-bottom"></div>
   </div>
 
-  <!-- Toast Notification Container -->
   <div id="toast-container"></div>
 
   <div class="app-container">
@@ -826,8 +323,7 @@
       </div>
       <h1 class="main-title">DigiCure</h1>
       <p class="subtitle">An unhackable hardware password vault for your ESP32-S3. Provision firmware, upload updates, and manage credentials securely via Web Serial.</p>
-      
-      <!-- Interactive Time-of-Day Sunrise Altitude Slider -->
+
       <div class="sunrise-time-controller">
         <label for="time-slider"><i class="fa-solid fa-sun" style="color: var(--sunrise-gold);"></i> Sunrise Altitude:</label>
         <input type="range" id="time-slider" class="sun-slider" min="0" max="100" value="38">
@@ -839,7 +335,7 @@
       </div>
     </header>
 
-    <!-- Step 1 Card -->
+    <!-- Step 1 -->
     <section class="step-card" data-tilt>
       <div class="card-header">
         <div class="step-number-title">
@@ -848,24 +344,17 @@
         </div>
         <i class="fa-solid fa-microchip" style="color: var(--sunrise-gold); font-size: 1.4rem;"></i>
       </div>
-      <p class="card-desc">Initialize your ESP32-S3 hardware with the optimized MicroPython runtime. This prepares the partition table for encrypted credential key storage.</p>
-      
+      <p class="card-desc">Initialize your ESP32-S3 hardware with the MicroPython runtime. First time only &mdash; this erases the board, including any saved vault.</p>
       <div style="display: flex; gap: 14px; align-items: center; flex-wrap: wrap;">
         <esp-web-install-button manifest="manifest.json">
-          <button slot="activate" class="btn">
-            <i class="fa-solid fa-bolt"></i> Flash MicroPython
-          </button>
+          <button slot="activate" class="btn"><i class="fa-solid fa-bolt"></i> Flash MicroPython</button>
           <span slot="unsupported">Your browser doesn't support Web Serial.</span>
           <span slot="not-allowed">Web Serial is only allowed over HTTPS or localhost.</span>
         </esp-web-install-button>
       </div>
-
-      <div class="progress-bar-container" id="flash-progress-bar">
-        <div class="progress-bar-fill" id="flash-progress-fill"></div>
-      </div>
     </section>
 
-    <!-- Step 2 Card -->
+    <!-- Step 2 -->
     <section class="step-card" data-tilt>
       <div class="card-header">
         <div class="step-number-title">
@@ -874,20 +363,16 @@
         </div>
         <i class="fa-solid fa-cloud-arrow-up" style="color: var(--sunrise-amber); font-size: 1.4rem;"></i>
       </div>
-      <p class="card-desc">Upload the main DigiCure script (<code>main.py</code>) to your connected hardware device. Existing encrypted credentials will remain untouched.</p>
-
+      <p class="card-desc">Uploads <code>main.py</code> to your connected device and restarts it. Your existing vault is kept. Connect the device in step 3 first.</p>
       <div style="display: flex; gap: 14px; flex-wrap: wrap;">
-        <button class="btn" id="btn-upload-app" onclick="handleUploadApp()">
-          <i class="fa-solid fa-upload"></i> Upload App Firmware
-        </button>
+        <button class="btn" id="btn-upload-app" onclick="handleUploadApp()"><i class="fa-solid fa-upload"></i> Upload App</button>
       </div>
-
       <div class="progress-bar-container" id="upload-progress-bar">
         <div class="progress-bar-fill" id="upload-progress-fill"></div>
       </div>
     </section>
 
-    <!-- Step 3 Card -->
+    <!-- Step 3 -->
     <section class="step-card" data-tilt>
       <div class="card-header">
         <div class="step-number-title">
@@ -896,25 +381,19 @@
         </div>
         <i class="fa-solid fa-vault" style="color: var(--sunrise-gold); font-size: 1.4rem;"></i>
       </div>
-      <p class="card-desc">Connect directly over Web Serial to interact with your encrypted DigiCure hardware vault in real-time.</p>
+      <p class="card-desc">Connect over Web Serial, then log in with your PIN &mdash; here or on the device itself. Adding or deleting a credential always needs a tap on the device.</p>
 
-      <!-- Hardware Dashboard Status -->
       <div class="status-panel">
         <div class="device-chip-info">
-          <div class="chip-icon" id="chip-status-icon">
-            <i class="fa-solid fa-cpu"></i>
-          </div>
+          <div class="chip-icon" id="chip-status-icon"><i class="fa-solid fa-cpu"></i></div>
           <div>
             <div class="status-badge" id="status-badge">
               <span class="status-dot"></span>
               <span id="status-text">Disconnected</span>
             </div>
-            <div style="font-size: 0.82rem; color: var(--text-dim); margin-top: 4px;" id="chip-details">
-              ESP32-S3 (Offline)
-            </div>
+            <div style="font-size: 0.82rem; color: var(--text-dim); margin-top: 4px;" id="chip-details">ESP32-S3 (Offline)</div>
           </div>
         </div>
-
         <div style="display: flex; align-items: center; gap: 16px;">
           <canvas id="serial-wave" class="serial-wave-canvas" width="130" height="32"></canvas>
           <button class="btn" id="btn-connect-serial" onclick="toggleSerialConnection()">
@@ -923,53 +402,43 @@
         </div>
       </div>
 
-      <!-- Hardware Unlock PIN Section -->
       <div id="pin-lock-section" class="pin-box" style="display: none;">
         <i class="fa-solid fa-lock-keyhole" style="font-size: 2.2rem; color: var(--sunrise-gold); margin-bottom: 12px;"></i>
         <h3 style="font-size: 1.15rem; color: #fff; margin-bottom: 6px;">Hardware Device Locked</h3>
-        <p style="font-size: 0.9rem; color: var(--text-dim);">Enter your 4-digit Master PIN on the physical device, or click below to simulate PIN entry:</p>
-        
+        <p style="font-size: 0.9rem; color: var(--text-dim); margin-bottom: 14px;">Enter your PIN below, or on the device itself &mdash; this page updates either way.</p>
         <div class="pin-dots">
           <div class="pin-dot" id="dot-1"></div>
           <div class="pin-dot" id="dot-2"></div>
           <div class="pin-dot" id="dot-3"></div>
           <div class="pin-dot" id="dot-4"></div>
         </div>
-
-        <button class="btn btn-secondary" onclick="simulatePinUnlock()" style="padding: 10px 22px; font-size: 0.9rem;">
-          <i class="fa-solid fa-key"></i> Simulate Hardware Unlock
-        </button>
+        <input type="password" id="pin-input" inputmode="numeric" autocomplete="off" placeholder="PIN"
+               onkeydown="if(event.key==='Enter')submitPin()" oninput="animateDots(this.value.length)">
+        <div>
+          <button class="btn" onclick="submitPin()" style="padding: 10px 22px; font-size: 0.9rem;">
+            <i class="fa-solid fa-key"></i> Log in with PIN
+          </button>
+        </div>
       </div>
 
-      <!-- Unlocked Vault Credentials Tools -->
       <div id="vault-tools" style="display: none; animation: fadeIn 0.5s ease;">
         <div class="vault-controls">
           <div class="search-input-wrap">
             <i class="fa-solid fa-magnifying-glass"></i>
             <input type="text" id="vault-search" placeholder="Search saved credentials..." oninput="filterVaultTable()">
           </div>
-          <button class="btn" onclick="openAddModal()">
-            <i class="fa-solid fa-plus"></i> Add Credential
-          </button>
+          <button class="btn" onclick="openAddModal()"><i class="fa-solid fa-plus"></i> Add Credential</button>
         </div>
 
         <div class="table-container">
           <table id="vault-table">
             <thead>
-              <tr>
-                <th>Service</th>
-                <th>Username</th>
-                <th>Password</th>
-                <th style="text-align: right;">Actions</th>
-              </tr>
+              <tr><th>Service</th><th>Username</th><th>Password</th><th style="text-align: right;">Actions</th></tr>
             </thead>
-            <tbody id="vault-tbody">
-              <!-- Dynamically Populated -->
-            </tbody>
+            <tbody id="vault-tbody"></tbody>
           </table>
         </div>
 
-        <!-- Inline Credential Creation Form -->
         <div id="add-credential-card" style="display: none; margin-top: 22px; padding: 22px; background: rgba(0,0,0,0.4); border-radius: var(--radius-md); border: 1px solid var(--glass-border);">
           <h4 style="color: var(--sunrise-gold); margin-bottom: 16px;"><i class="fa-solid fa-key"></i> Store New Credential</h4>
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin-bottom: 16px;" class="no-icon">
@@ -977,6 +446,7 @@
             <input type="text" id="new-user" placeholder="Username / Email" class="no-icon">
             <input type="password" id="new-pass" placeholder="Password" class="no-icon">
           </div>
+          <p style="font-size: 0.85rem; color: var(--text-dim); margin-bottom: 14px;">You'll need to tap SAVE on the device to approve this.</p>
           <div style="display: flex; gap: 12px; justify-content: flex-end;">
             <button class="btn btn-secondary" onclick="closeAddModal()" style="padding: 10px 18px;">Cancel</button>
             <button class="btn" onclick="saveNewCredential()" style="padding: 10px 20px;">Save to Hardware</button>
@@ -984,7 +454,6 @@
         </div>
       </div>
 
-      <!-- Real-time Console Logs -->
       <div class="console-terminal" id="console-log">
         <div class="console-line"><span class="ts">[System]</span> DigiCure initialized. Connect ESP32-S3 over Web Serial to begin.</div>
       </div>
@@ -996,10 +465,8 @@
     let isConnected = false;
     let isUnlocked = false;
 
-    // Canvas Optics Engine Setup
     const canvas = document.getElementById('optics-canvas');
     const ctx = canvas.getContext('2d');
-
     const flareCanvas = document.getElementById('lens-flare-layer');
     const flareCtx = flareCanvas.getContext('2d');
 
@@ -1011,59 +478,39 @@
       height = canvas.height = flareCanvas.height = window.innerHeight;
     });
 
-    // Mouse Position, Dynamic Parallax and 3D Hover Tilt Tracking
-    let mouseX = window.innerWidth / 2;
-    let mouseY = window.innerHeight / 2;
-    let cursorX = mouseX;
-    let cursorY = mouseY;
+    let mouseX = window.innerWidth / 2, mouseY = window.innerHeight / 2;
+    let cursorX = mouseX, cursorY = mouseY;
 
     window.addEventListener('mousemove', (e) => {
-      mouseX = e.clientX;
-      mouseY = e.clientY;
-
-      // Update 3D card tilt and specular light probe position
+      mouseX = e.clientX; mouseY = e.clientY;
       document.querySelectorAll('.step-card').forEach(card => {
         const rect = card.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        
+        const x = e.clientX - rect.left, y = e.clientY - rect.top;
         card.style.setProperty('--mouse-x', `${x}px`);
         card.style.setProperty('--mouse-y', `${y}px`);
-
-        // Calculate subtle 3D perspective tilt
-        const centerX = rect.width / 2;
-        const centerY = rect.height / 2;
-        const rotateX = ((y - centerY) / centerY) * -4; // Max -4deg
-        const rotateY = ((x - centerX) / centerX) * 4;   // Max 4deg
-
+        const centerX = rect.width / 2, centerY = rect.height / 2;
+        const rotateX = ((y - centerY) / centerY) * -4;
+        const rotateY = ((x - centerX) / centerX) * 4;
         card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) translateZ(8px)`;
       });
-
-      // Subtle parallax on landscape ridges
       const parallaxX = (e.clientX - width / 2) * 0.015;
       const mFar = document.querySelector('.mountain-far');
       const mMid = document.querySelector('.mountain-mid');
       const mFront = document.querySelector('.mountain-front');
-
       if (mFar) mFar.style.transform = `translateX(${parallaxX * 0.4}px)`;
       if (mMid) mMid.style.transform = `translateX(${parallaxX * 0.75}px)`;
       if (mFront) mFront.style.transform = `translateX(${parallaxX * 1.2}px)`;
     });
 
-    // Reset card tilt when mouse leaves element
     document.querySelectorAll('.step-card').forEach(card => {
       card.addEventListener('mouseleave', () => {
         card.style.transform = `perspective(1000px) rotateX(0deg) rotateY(0deg) translateZ(0px)`;
       });
     });
 
-    // Time-of-Day Slider State (0 = Dawn, 50 = Morning Gold, 100 = Midday Sun)
     const timeSlider = document.getElementById('time-slider');
     let timeProgress = parseFloat(timeSlider.value) / 100;
-
-    timeSlider.addEventListener('input', (e) => {
-      timeProgress = parseFloat(e.target.value) / 100;
-    });
+    timeSlider.addEventListener('input', (e) => { timeProgress = parseFloat(e.target.value) / 100; });
 
     let cloudOffset = 0;
 
@@ -1072,50 +519,37 @@
       cursorX += (mouseX - cursorX) * 0.04;
       cursorY += (mouseY - cursorY) * 0.04;
 
-      // 1. Rayleigh & Mie Atmosphere Sky Gradient Transition
       const skyGrad = ctx.createLinearGradient(0, 0, 0, height);
-      
       const zenithIndigo = lerpColor('#05020c', '#0d152b', timeProgress);
       const upperPurple = lerpColor('#140622', '#2a1740', timeProgress);
       const midCrimson = lerpColor('#400c26', '#872338', timeProgress);
       const vermilionHaze = lerpColor('#8a2017', '#d94b28', timeProgress);
       const horizonGolden = lerpColor('#d4621c', '#f7b148', timeProgress);
-
       skyGrad.addColorStop(0.0, zenithIndigo);
       skyGrad.addColorStop(0.32, upperPurple);
       skyGrad.addColorStop(0.6, midCrimson);
       skyGrad.addColorStop(0.8, vermilionHaze);
       skyGrad.addColorStop(1.0, horizonGolden);
-
       ctx.fillStyle = skyGrad;
       ctx.fillRect(0, 0, width, height);
 
-      // Sun Coordinates - Smoothly elevated with slider and mouse cursor
       const sunX = width * 0.5 + (cursorX - width / 2) * 0.035;
       const sunY = height * (0.82 - timeProgress * 0.35) + (cursorY - height / 2) * 0.015;
 
-      // 2. Volumetric Crepuscular Ray Beams (Smudged & Softened God Rays)
       ctx.save();
       ctx.translate(sunX, sunY);
-
-      // Apply soft Gaussian diffusion filter to smudge and blend ray edges
       ctx.filter = 'blur(18px)';
-
       const rayCount = 18;
       for (let i = 0; i < rayCount; i++) {
         const angle = (i / rayCount) * Math.PI - Math.PI / 2 + Math.sin(cloudOffset * 0.002 + i) * 0.02;
         const beamWidth = 0.18 + Math.sin(i * 2.3) * 0.04;
-
-        // Extra soft smudge and falloff factor for rays fanning toward the right side
         const isRightSide = angle > -Math.PI / 6;
         const rightSmudgeFactor = isRightSide ? 0.65 : 1.0;
-
         const rayGrad = ctx.createRadialGradient(0, 0, 10, 0, 0, Math.max(width, height) * 0.95);
         rayGrad.addColorStop(0, `rgba(255, 248, 220, ${0.28 * rightSmudgeFactor})`);
         rayGrad.addColorStop(0.32, `rgba(247, 152, 54, ${0.12 * rightSmudgeFactor})`);
         rayGrad.addColorStop(0.7, `rgba(184, 46, 31, ${0.03 * rightSmudgeFactor})`);
         rayGrad.addColorStop(1, 'transparent');
-
         ctx.beginPath();
         ctx.moveTo(0, 0);
         ctx.arc(0, 0, Math.max(width, height) * 0.95, angle - beamWidth, angle + beamWidth);
@@ -1123,38 +557,31 @@
         ctx.fillStyle = rayGrad;
         ctx.fill();
       }
-
-      // Reset filter so core sun disc remains crisp
       ctx.filter = 'none';
       ctx.restore();
 
-      // 3. Multi-Layer Mie Scattering Halos & Solar Core
       const outerBloomRadius = 220 + timeProgress * 360;
       const outerBloom = ctx.createRadialGradient(sunX, sunY, 10, sunX, sunY, outerBloomRadius);
       outerBloom.addColorStop(0, 'rgba(255, 225, 160, 0.75)');
       outerBloom.addColorStop(0.25, 'rgba(242, 98, 34, 0.42)');
       outerBloom.addColorStop(0.65, 'rgba(74, 13, 42, 0.14)');
       outerBloom.addColorStop(1, 'transparent');
-
       ctx.fillStyle = outerBloom;
       ctx.beginPath();
       ctx.arc(sunX, sunY, outerBloomRadius, 0, Math.PI * 2);
       ctx.fill();
 
-      // Corona Flare
       const coronaRadius = 80 + timeProgress * 50;
       const corona = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, coronaRadius);
       corona.addColorStop(0, '#ffffff');
       corona.addColorStop(0.3, '#fff4cc');
       corona.addColorStop(0.7, '#f79836');
       corona.addColorStop(1, 'transparent');
-
       ctx.fillStyle = corona;
       ctx.beginPath();
       ctx.arc(sunX, sunY, coronaRadius, 0, Math.PI * 2);
       ctx.fill();
 
-      // Core Disc
       const coreRadius = 26 + timeProgress * 14;
       ctx.fillStyle = '#ffffff';
       ctx.shadowColor = '#fcc95f';
@@ -1164,13 +591,8 @@
       ctx.fill();
       ctx.shadowBlur = 0;
 
-      // 4. Smooth Rim-Lit Clouds
       renderClouds(sunX, sunY);
-
-      // 5. Floating Dust & Golden Heat Embers
       renderEmbers(sunX, sunY);
-
-      // 6. Camera Lens Flare Optics
       renderLensFlares(sunX, sunY);
 
       requestAnimationFrame(renderAtmosphericSunrise);
@@ -1183,13 +605,10 @@
         { y: height * 0.6, speed: 0.22, scale: 1.0, opacity: 0.4, color: '#1a0624' },
         { y: height * 0.7, speed: 0.35, scale: 0.7, opacity: 0.58, color: '#0f0317' }
       ];
-
       cloudLayers.forEach((layer) => {
         ctx.fillStyle = layer.color;
         ctx.globalAlpha = layer.opacity;
-
         const xPos = ((cloudOffset * layer.speed) % (width + 600)) - 300;
-
         ctx.beginPath();
         ctx.ellipse(xPos, layer.y, 340 * layer.scale, 35 * layer.scale, 0, 0, Math.PI * 2);
         ctx.ellipse(xPos + 240, layer.y - 14, 280 * layer.scale, 28 * layer.scale, 0, 0, Math.PI * 2);
@@ -1201,24 +620,17 @@
 
     function renderLensFlares(sunX, sunY) {
       flareCtx.clearRect(0, 0, width, height);
-
-      const centerX = width / 2;
-      const centerY = height / 2;
-      const dx = centerX - sunX;
-      const dy = centerY - sunY;
-
-      // Anamorphic Streak across Sun Core
+      const centerX = width / 2, centerY = height / 2;
+      const dx = centerX - sunX, dy = centerY - sunY;
       const streakGrad = flareCtx.createLinearGradient(sunX - 380, sunY, sunX + 380, sunY);
       streakGrad.addColorStop(0, 'transparent');
       streakGrad.addColorStop(0.35, 'rgba(247, 152, 54, 0.18)');
       streakGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.9)');
       streakGrad.addColorStop(0.65, 'rgba(247, 152, 54, 0.18)');
       streakGrad.addColorStop(1, 'transparent');
-
       flareCtx.fillStyle = streakGrad;
       flareCtx.fillRect(sunX - 380, sunY - 2.5, 760, 5);
 
-      // Lens Iris Ghosts
       const ghosts = [
         { dist: 0.3, size: 30, color: 'rgba(252, 201, 95, 0.2)' },
         { dist: 0.55, size: 48, color: 'rgba(242, 98, 34, 0.14)' },
@@ -1226,16 +638,12 @@
         { dist: 1.25, size: 70, color: 'rgba(247, 152, 54, 0.09)' },
         { dist: 1.5, size: 35, color: 'rgba(252, 201, 95, 0.16)' }
       ];
-
       ghosts.forEach(ghost => {
-        const gx = sunX + dx * ghost.dist;
-        const gy = sunY + dy * ghost.dist;
-
+        const gx = sunX + dx * ghost.dist, gy = sunY + dy * ghost.dist;
         const ghostGrad = flareCtx.createRadialGradient(gx, gy, 0, gx, gy, ghost.size);
         ghostGrad.addColorStop(0, ghost.color);
         ghostGrad.addColorStop(0.85, ghost.color);
         ghostGrad.addColorStop(1, 'transparent');
-
         flareCtx.fillStyle = ghostGrad;
         flareCtx.beginPath();
         flareCtx.arc(gx, gy, ghost.size, 0, Math.PI * 2);
@@ -1258,15 +666,9 @@
         this.wobble += 0.02;
         this.y -= this.speedY;
         this.x += this.speedX + Math.sin(this.wobble) * 0.35;
-
-        const dx = cursorX - this.x;
-        const dy = cursorY - this.y;
+        const dx = cursorX - this.x, dy = cursorY - this.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 140) {
-          this.x -= (dx / dist) * 2.4;
-          this.opacity = Math.min(0.95, this.opacity + 0.04);
-        }
-
+        if (dist < 140) { this.x -= (dx / dist) * 2.4; this.opacity = Math.min(0.95, this.opacity + 0.04); }
         if (this.y < -15) this.reset();
       }
       draw() {
@@ -1276,41 +678,30 @@
         ctx.fill();
       }
     }
-
     const embers = Array.from({ length: 55 }, () => new DustParticle());
-    function renderEmbers() {
-      embers.forEach(e => { e.update(); e.draw(); });
-    }
+    function renderEmbers() { embers.forEach(e => { e.update(); e.draw(); }); }
 
     function lerpColor(a, b, amount) {
-      const ah = parseInt(a.replace('#', ''), 16),
-            ar = ah >> 16, ag = (ah >> 8) & 0xff, ab = ah & 0xff,
-            bh = parseInt(b.replace('#', ''), 16),
-            br = bh >> 16, bg = (bh >> 8) & 0xff, bb = bh & 0xff,
-            rr = Math.round(ar + amount * (br - ar)),
-            rg = Math.round(ag + amount * (bg - ag)),
-            rb = Math.round(ab + amount * (bb - ab));
+      const ah = parseInt(a.replace('#', ''), 16), ar = ah >> 16, ag = (ah >> 8) & 0xff, ab = ah & 0xff,
+            bh = parseInt(b.replace('#', ''), 16), br = bh >> 16, bg = (bh >> 8) & 0xff, bb = bh & 0xff,
+            rr = Math.round(ar + amount * (br - ar)), rg = Math.round(ag + amount * (bg - ag)), rb = Math.round(ab + amount * (bb - ab));
       return `rgb(${rr}, ${rg}, ${rb})`;
     }
-
     renderAtmosphericSunrise();
 
     const waveCanvas = document.getElementById('serial-wave');
     const waveCtx = waveCanvas.getContext('2d');
     let waveStep = 0;
-
     function drawSerialWave() {
       waveCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
       waveCtx.beginPath();
       waveCtx.lineWidth = 2;
       waveCtx.strokeStyle = isConnected ? '#10b981' : '#f79836';
-
       for (let x = 0; x < waveCanvas.width; x++) {
         const y = isConnected
           ? waveCanvas.height / 2 + Math.sin((x + waveStep) * 0.15) * 8 * Math.sin(waveStep * 0.05)
           : waveCanvas.height / 2 + Math.sin((x + waveStep) * 0.05) * 2;
-        if (x === 0) waveCtx.moveTo(x, y);
-        else waveCtx.lineTo(x, y);
+        if (x === 0) waveCtx.moveTo(x, y); else waveCtx.lineTo(x, y);
       }
       waveCtx.stroke();
       waveStep += isConnected ? 1.5 : 0.4;
@@ -1318,16 +709,8 @@
     }
     drawSerialWave();
 
-    let mockVault = [
-      { id: 1, service: 'GitHub', user: 'sakshi_padiyar', pass: 'git_s3cur3_v4ult!' },
-      { id: 2, service: 'Gmail', user: 'sakshi@digicure.io', pass: 'p@ssw0rd_sunrise99' },
-      { id: 3, service: 'AWS Console', user: 'admin_root', pass: 'k3y_m4st3r_airgapped' }
-    ];
-
     window.addEventListener('DOMContentLoaded', () => {
-      if (!('serial' in navigator)) {
-        document.getElementById('browser-warning').style.display = 'flex';
-      }
+      if (!('serial' in navigator)) document.getElementById('browser-warning').style.display = 'flex';
     });
 
     function showToast(message, icon = 'fa-circle-check') {
@@ -1336,7 +719,6 @@
       toast.className = 'toast';
       toast.innerHTML = `<i class="fa-solid ${icon}" style="color: var(--sunrise-gold);"></i> <span>${message}</span>`;
       container.appendChild(toast);
-
       setTimeout(() => {
         toast.style.opacity = '0';
         toast.style.transform = 'translateX(100%)';
@@ -1354,57 +736,235 @@
       log.scrollTop = log.scrollHeight;
     }
 
-    async function toggleSerialConnection() {
-      if (isConnected) {
-        if (port) {
-          try { await port.close(); } catch(e){}
-        }
-        isConnected = false;
-        isUnlocked = false;
-        updateUIState();
-        logConsole('Serial connection closed.');
-        showToast('Disconnected from ESP32-S3', 'fa-plug-circle-xmark');
-      } else {
-        if ('serial' in navigator) {
-          try {
-            port = await navigator.serial.requestPort();
-            await port.open({ baudRate: 115200 });
-            isConnected = true;
-            logConsole('Connected to Web Serial port at 115200 baud.');
-            showToast('Connected to ESP32-S3!', 'fa-plug-circle-check');
-            updateUIState();
-          } catch (err) {
-            logConsole('Serial connection canceled or failed: ' + err.message);
-            simulateConnection();
-          }
-        } else {
-          simulateConnection();
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, function(m) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
+      });
+    }
+
+    /* =====================================================================
+       REAL DEVICE LINK — talks to main.py's serial protocol: lines
+       prefixed "DC" carrying JSON, e.g. DC{"c":"hello"} ->
+       DC{"r":"hello","locked":true,"n":3}
+       ===================================================================== */
+
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    let writer = null, reader = null, rx = '', pend = {}, waiters = [], raw = false;
+    let pollTimer = null;
+
+    function pump() {
+      waiters = waiters.filter(w => { if (w.re.test(rx)) { w.res(); return false; } return true; });
+      if (raw) return;
+      let i;
+      while ((i = rx.indexOf('\n')) >= 0) {
+        const line = rx.slice(0, i).trim(); rx = rx.slice(i + 1);
+        if (line.startsWith('DC{')) {
+          try { const m = JSON.parse(line.slice(2)); if (pend[m.r]) pend[m.r](m); } catch (e) {}
         }
       }
     }
-
-    function simulateConnection() {
-      isConnected = true;
-      logConsole('Simulated Web Serial session active with ESP32-S3.');
-      showToast('Simulated Serial Connection Active', 'fa-bolt');
-      updateUIState();
+    function waitFor(re, ms) {
+      return new Promise((res, rej) => {
+        const t = setTimeout(() => rej(new Error('Device did not respond')), ms);
+        waiters.push({ re, res: () => { clearTimeout(t); res(); } });
+        pump();
+      });
+    }
+    function ask(obj, ms = 4000) {
+      return new Promise((res, rej) => {
+        const t = setTimeout(() => { delete pend[obj.c]; rej(new Error('No reply from the DigiCure app')); }, ms);
+        pend[obj.c] = m => { clearTimeout(t); delete pend[obj.c]; res(m); };
+        writer.write(new TextEncoder().encode('DC' + JSON.stringify(obj) + '\n'));
+      });
+    }
+    async function readLoop() {
+      const r = port.readable.getReader();
+      reader = r;
+      const dec = new TextDecoder();
+      try {
+        for (;;) {
+          const { value, done } = await r.read();
+          if (done) break;
+          rx += dec.decode(value, { stream: true });
+          pump();
+        }
+      } catch (e) {}
+      try { r.releaseLock(); } catch (e) {}
     }
 
-    function simulatePinUnlock() {
-      const dots = [1, 2, 3, 4];
-      dots.forEach((d, i) => {
-        setTimeout(() => {
-          document.getElementById(`dot-${d}`).classList.add('filled');
-        }, i * 150);
-      });
+    const shaBuf = async b => new Uint8Array(await crypto.subtle.digest('SHA-256', b));
+    const catBuf = (...a) => { const o = new Uint8Array(a.reduce((n, x) => n + x.length, 0)); let p = 0; a.forEach(x => { o.set(x, p); p += x.length; }); return o; };
+    const hex2buf = h => Uint8Array.from(h.match(/../g).map(x => parseInt(x, 16)));
+    const buf2hex = b => [...b].map(x => x.toString(16).padStart(2, '0')).join('');
+    async function deriveKeys(pin, saltHex, rounds) {
+      const salt = hex2buf(saltHex);
+      const p = new TextEncoder().encode(pin);
+      let k = await shaBuf(catBuf(salt, p));
+      for (let i = 0; i < rounds; i++) k = await shaBuf(catBuf(k, salt, p));
+      return [await shaBuf(catBuf(k, new Uint8Array([69]))), await shaBuf(catBuf(k, new Uint8Array([77])))];
+    }
 
-      setTimeout(() => {
-        isUnlocked = true;
-        logConsole('Master PIN authenticated on device. AES Vault keys decrypted.');
-        showToast('Hardware Vault Unlocked!', 'fa-lock-open');
+    async function toggleSerialConnection() {
+      if (isConnected) {
+        stopPoll();
+        try { if (reader) await reader.cancel(); } catch (e) {}
+        try { if (writer) writer.releaseLock(); } catch (e) {}
+        try { if (port) await port.close(); } catch (e) {}
+        port = null; writer = null; reader = null;
+        isConnected = false; isUnlocked = false;
         updateUIState();
+        logConsole('Serial connection closed.');
+        showToast('Disconnected from ESP32-S3', 'fa-plug-circle-xmark');
+        return;
+      }
+      if (!('serial' in navigator)) { showToast('Web Serial is not supported in this browser.', 'fa-triangle-exclamation'); return; }
+      try {
+        port = await navigator.serial.requestPort();
+        await port.open({ baudRate: 115200 });
+        writer = port.writable.getWriter();
+        rx = '';
+        readLoop();
+        isConnected = true;
+        logConsole('Connected to Web Serial port at 115200 baud.');
+        showToast('Connected to ESP32-S3', 'fa-plug-circle-check');
+        updateUIState();
+        await checkHello();
+        startPoll();
+      } catch (err) {
+        logConsole('Serial connection failed: ' + err.message);
+        showToast('Connection failed or cancelled', 'fa-triangle-exclamation');
+      }
+    }
+
+    async function checkHello() {
+      try {
+        const m = await ask({ c: 'hello' }, 2500);
+        isUnlocked = !m.locked;
+        updateUIState();
+        if (isUnlocked) await refreshVault();
+      } catch (e) { logConsole('No DigiCure app detected yet: ' + e.message); }
+    }
+
+    function startPoll() {
+      stopPoll();
+      pollTimer = setInterval(async () => {
+        if (!isConnected || raw) return;
+        try {
+          const m = await ask({ c: 'hello' }, 1800);
+          const wasUnlocked = isUnlocked;
+          isUnlocked = !m.locked;
+          if (isUnlocked !== wasUnlocked) { updateUIState(); if (isUnlocked) await refreshVault(); }
+        } catch (e) {}
+      }, 2500);
+    }
+    function stopPoll() { if (pollTimer) clearInterval(pollTimer); pollTimer = null; }
+
+    async function submitPin() {
+      const input = document.getElementById('pin-input');
+      const pin = input.value;
+      if (!pin) return;
+      try {
+        const s = await ask({ c: 'salt' });
+        if (s.err) { showToast('Choose a PIN on the device first.', 'fa-triangle-exclamation'); return; }
+        logConsole('Checking PIN against the device...');
+        const [ke, km] = await deriveKeys(pin, s.s, s.rounds);
+        const m = await ask({ c: 'login', ke: buf2hex(ke), km: buf2hex(km) }, 6000);
+        if (m.ok) {
+          isUnlocked = true;
+          input.value = '';
+          animateDots(0);
+          logConsole('PIN accepted. Vault unlocked.');
+          showToast('Hardware Vault Unlocked!', 'fa-lock-open');
+          updateUIState();
+          await refreshVault();
+        } else {
+          logConsole('Login rejected: ' + (m.err || 'wrong PIN'));
+          showToast(m.wait ? `Wrong PIN. Device locked ${m.wait}s.` : 'Wrong PIN', 'fa-triangle-exclamation');
+          animateDots(0);
+        }
+      } catch (e) {
+        logConsole('Login error: ' + e.message);
+        showToast(e.message, 'fa-triangle-exclamation');
+      }
+    }
+    function animateDots(n) {
+      [1, 2, 3, 4].forEach(d => { const dot = document.getElementById(`dot-${d}`); if (dot) dot.classList.toggle('filled', d <= n); });
+    }
+
+    let vaultItems = [];
+    async function refreshVault() {
+      try {
+        const m = await ask({ c: 'list' });
+        vaultItems = (m.items || []).slice().sort((a, b) => a.n.toLowerCase().localeCompare(b.n.toLowerCase()));
         renderVaultTable();
-      }, 800);
+      } catch (e) { logConsole('Could not read vault: ' + e.message); }
+    }
+    function filterVaultTable() {
+      const q = document.getElementById('vault-search').value.toLowerCase();
+      renderVaultTable(vaultItems.filter(i => i.n.toLowerCase().includes(q) || (i.u || '').toLowerCase().includes(q)));
+    }
+    function renderVaultTable(data = vaultItems) {
+      const tbody = document.getElementById('vault-tbody');
+      tbody.innerHTML = '';
+      if (!data.length) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color: var(--text-dim); padding: 24px;">No credentials found in hardware vault.</td></tr>`;
+        return;
+      }
+      data.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><strong style="color: #fff;"><i class="fa-solid fa-globe" style="color: var(--sunrise-gold); margin-right: 8px;"></i>${escapeHtml(item.n)}${item.f ? ' <i class="fa-solid fa-star" style="color: var(--sunrise-gold); font-size:.75em;" title="Favorite"></i>' : ''}</strong></td>
+          <td>${escapeHtml(item.u || '-')}</td>
+          <td><span class="pwd-field" style="opacity:.6;">on device</span></td>
+          <td style="text-align: right;">
+            <div style="display: inline-flex; gap: 8px;">
+              <button class="action-icon-btn" onclick="deleteCredential(${item.i})" title="Delete Credential" style="color: #fca5a5;">
+                <i class="fa-solid fa-trash"></i>
+              </button>
+            </div>
+          </td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function openAddModal() { document.getElementById('add-credential-card').style.display = 'block'; }
+    function closeAddModal() {
+      document.getElementById('add-credential-card').style.display = 'none';
+      document.getElementById('new-service').value = '';
+      document.getElementById('new-user').value = '';
+      document.getElementById('new-pass').value = '';
+    }
+    async function saveNewCredential() {
+      const n = document.getElementById('new-service').value.trim();
+      const u = document.getElementById('new-user').value.trim();
+      const p = document.getElementById('new-pass').value;
+      if (!n || !p) { showToast('Service and password are required.', 'fa-triangle-exclamation'); return; }
+      logConsole(`Waiting for approval on the device for [${n}]...`);
+      showToast('Tap SAVE on the device to approve', 'fa-hand-pointer');
+      try {
+        const m = await ask({ c: 'add', n, u, p }, 120000);
+        if (m.err) { showToast('Device says: ' + m.err, 'fa-triangle-exclamation'); }
+        else if (m.ok) {
+          logConsole(`Credential [${escapeHtml(n)}] approved and saved on the device.`);
+          showToast('Saved to hardware vault!', 'fa-shield-check');
+          closeAddModal();
+        } else {
+          logConsole('Add discarded on the device.');
+          showToast('Discarded on device', 'fa-circle-xmark');
+        }
+      } catch (e) { showToast(e.message, 'fa-triangle-exclamation'); }
+      refreshVault();
+    }
+    async function deleteCredential(i) {
+      logConsole('Waiting for confirmation on the device...');
+      showToast('Confirm delete on the device', 'fa-hand-pointer');
+      try {
+        const m = await ask({ c: 'del', i }, 120000);
+        if (m.err) showToast('Device says: ' + m.err, 'fa-triangle-exclamation');
+        else if (m.ok) { logConsole(`Credential ID ${i} deleted from device.`); showToast('Credential removed from vault', 'fa-trash-can'); }
+        else showToast('Cancelled on device', 'fa-circle-xmark');
+      } catch (e) { showToast(e.message, 'fa-triangle-exclamation'); }
+      refreshVault();
     }
 
     function updateUIState() {
@@ -1431,7 +991,7 @@
         statusText.innerText = 'Connected (Locked)';
         connBtnText.innerText = 'Disconnect';
         chipIcon.className = 'chip-icon active';
-        chipDetails.innerText = 'ESP32-S3 (Awaiting Master PIN)';
+        chipDetails.innerText = 'ESP32-S3 (Awaiting PIN)';
         pinSec.style.display = 'block';
         vaultTools.style.display = 'none';
         wave.classList.add('active');
@@ -1447,156 +1007,54 @@
       }
     }
 
-    function simulateFlashing() {
-      const bar = document.getElementById('flash-progress-bar');
-      const fill = document.getElementById('flash-progress-fill');
-      bar.style.display = 'block';
-      fill.style.width = '0%';
-
-      logConsole('Preparing ESP32-S3 partition table for MicroPython runtime...');
-      showToast('Flashing MicroPython runtime...', 'fa-fire-flame-curved');
-
-      let pct = 0;
-      const interval = setInterval(() => {
-        pct += 10;
-        fill.style.width = pct + '%';
-        if (pct === 40) logConsole('Erasing flash sectors...');
-        if (pct === 80) logConsole('Writing image binary to 0x10000...');
-        if (pct >= 100) {
-          clearInterval(interval);
-          logConsole('MicroPython runtime flashed! Resetting hardware.');
-          showToast('MicroPython Flashed!', 'fa-circle-check');
-          setTimeout(() => bar.style.display = 'none', 1000);
-        }
-      }, 280);
+    async function rawExec(code) {
+      rx = '';
+      await writer.write(new TextEncoder().encode(code));
+      await writer.write(new TextEncoder().encode('\x04'));
+      await waitFor(/OK[\s\S]*\x04[\s\S]*\x04>/, 20000);
+      const err = rx.split('\x04')[1];
+      if (err && err.trim()) throw new Error(err.trim().split('\n').pop());
     }
-
-    function handleUploadApp() {
+    async function handleUploadApp() {
+      if (!isConnected || !port || !writer) { showToast('Connect the device first (step 3).', 'fa-triangle-exclamation'); return; }
       const bar = document.getElementById('upload-progress-bar');
       const fill = document.getElementById('upload-progress-fill');
-      bar.style.display = 'block';
-      fill.style.width = '0%';
+      bar.style.display = 'block'; fill.style.width = '0%';
+      logConsole('Uploading main.py to the device...');
+      stopPoll();
+      try {
+        let bytes;
+        try { bytes = new Uint8Array(await (await fetch('main.py', { cache: 'no-store' })).arrayBuffer()); }
+        catch (e) { throw new Error('main.py not found next to this page'); }
 
-      logConsole('Uploading main.py app to hardware filesystem...');
-
-      let pct = 0;
-      const interval = setInterval(() => {
-        pct += 20;
-        fill.style.width = pct + '%';
-        if (pct >= 100) {
-          clearInterval(interval);
-          logConsole('DigiCure App Firmware main.py uploaded successfully!');
-          showToast('Firmware Upload Complete!', 'fa-cloud-arrow-up');
-          setTimeout(() => bar.style.display = 'none', 1000);
+        raw = true; rx = '';
+        await writer.write(new TextEncoder().encode('\x03\x03')); await sleep(400); rx = '';
+        await writer.write(new TextEncoder().encode('\x01'));
+        await waitFor(/raw REPL; CTRL-B to exit\r\n>/, 5000);
+        await rawExec("import binascii as b\nf=open('main.py','wb')");
+        const CH = 768;
+        for (let o = 0; o < bytes.length; o += CH) {
+          const b64 = btoa(String.fromCharCode(...bytes.subarray(o, o + CH)));
+          await rawExec("f.write(b.a2b_base64('" + b64 + "'))");
+          fill.style.width = Math.round((o + CH) / bytes.length * 100) + '%';
         }
-      }, 220);
-    }
+        await rawExec('f.close()');
+        fill.style.width = '100%';
+        await writer.write(new TextEncoder().encode('\x02')); await sleep(200);
+        raw = false; rx = '';
+        await writer.write(new TextEncoder().encode('\x04'));
 
-    function renderVaultTable(data = mockVault) {
-      const tbody = document.getElementById('vault-tbody');
-      tbody.innerHTML = '';
-
-      if (data.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color: var(--text-dim); padding: 24px;">No credentials found in hardware vault.</td></tr>`;
-        return;
+        logConsole('DigiCure app uploaded. Device is restarting.');
+        showToast('Firmware Upload Complete!', 'fa-cloud-arrow-up');
+        isUnlocked = false;
+        updateUIState();
+        setTimeout(() => bar.style.display = 'none', 1200);
+      } catch (e) {
+        raw = false;
+        logConsole('Upload failed: ' + e.message);
+        showToast('Upload failed: ' + e.message, 'fa-triangle-exclamation');
       }
-
-      data.forEach(item => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td><strong style="color: #fff;"><i class="fa-solid fa-globe" style="color: var(--sunrise-gold); margin-right: 8px;"></i>${escapeHtml(item.service)}</strong></td>
-          <td>${escapeHtml(item.user)}</td>
-          <td><span class="pwd-field" id="pwd-${item.id}">••••••••••••</span></td>
-          <td style="text-align: right;">
-            <div style="display: inline-flex; gap: 8px;">
-              <button class="action-icon-btn" onclick="togglePasswordVisibility(${item.id}, '${escapeHtml(item.pass)}')" title="Toggle View">
-                <i class="fa-solid fa-eye" id="eye-${item.id}"></i>
-              </button>
-              <button class="action-icon-btn" onclick="copyPassword('${escapeHtml(item.pass)}')" title="Copy Password">
-                <i class="fa-solid fa-copy"></i>
-              </button>
-              <button class="action-icon-btn" onclick="deleteCredential(${item.id})" title="Delete Credential" style="color: #fca5a5;">
-                <i class="fa-solid fa-trash"></i>
-              </button>
-            </div>
-          </td>
-        `;
-        tbody.appendChild(tr);
-      });
-    }
-
-    function togglePasswordVisibility(id, pass) {
-      const el = document.getElementById(`pwd-${id}`);
-      const eye = document.getElementById(`eye-${id}`);
-      if (el.innerText === '••••••••••••') {
-        el.innerText = pass;
-        eye.className = 'fa-solid fa-eye-slash';
-      } else {
-        el.innerText = '••••••••••••';
-        eye.className = 'fa-solid fa-eye';
-      }
-    }
-
-    function copyPassword(pass) {
-      const el = document.createElement('textarea');
-      el.value = pass;
-      document.body.appendChild(el);
-      el.select();
-      document.execCommand('copy');
-      document.body.removeChild(el);
-
-      showToast('Password copied to clipboard!', 'fa-paste');
-      logConsole('Credential read and copied to clipboard.');
-    }
-
-    function filterVaultTable() {
-      const query = document.getElementById('vault-search').value.toLowerCase();
-      const filtered = mockVault.filter(i => 
-        i.service.toLowerCase().includes(query) || i.user.toLowerCase().includes(query)
-      );
-      renderVaultTable(filtered);
-    }
-
-    function openAddModal() {
-      document.getElementById('add-credential-card').style.display = 'block';
-    }
-
-    function closeAddModal() {
-      document.getElementById('add-credential-card').style.display = 'none';
-      document.getElementById('new-service').value = '';
-      document.getElementById('new-user').value = '';
-      document.getElementById('new-pass').value = '';
-    }
-
-    function saveNewCredential() {
-      const service = document.getElementById('new-service').value.trim();
-      const user = document.getElementById('new-user').value.trim();
-      const pass = document.getElementById('new-pass').value.trim();
-
-      if (!service || !user || !pass) {
-        showToast('Please fill out all credential fields.', 'fa-triangle-exclamation');
-        return;
-      }
-
-      const newItem = { id: Date.now(), service, user, pass };
-      mockVault.push(newItem);
-      renderVaultTable();
-      closeAddModal();
-      logConsole(`Credential [${service}] encrypted and saved to ESP32 flash.`);
-      showToast('Saved credential to hardware vault!', 'fa-shield-check');
-    }
-
-    function deleteCredential(id) {
-      mockVault = mockVault.filter(i => i.id !== id);
-      renderVaultTable();
-      logConsole(`Credential ID ${id} deleted from device storage.`);
-      showToast('Credential removed from vault', 'fa-trash-can');
-    }
-
-    function escapeHtml(str) {
-      return str.replace(/[&<>"']/g, function(m) {
-        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
-      });
+      startPoll();
     }
   </script>
 </body>
