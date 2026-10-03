@@ -43,7 +43,7 @@ Your passwords live on a small touchscreen device, not in the cloud. When you ne
 
 | Part | Details |
 | --- | --- |
-| Board | ESP32-S3 (developed on the DigiComp N16R8 board) |
+| Board | Digicomp ESP32 S3 Dev Board|
 | Display | 240×280 ST7789, SPI |
 | Touch | CST816T, I²C (address `0x15`) |
 | Firmware | MicroPython **v1.29.0** (`ESP32_GENERIC_S3`), included in `firmware/` |
