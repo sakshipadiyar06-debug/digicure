@@ -1,4 +1,15 @@
 # ============================================================
+# DigiCure main.py  -  loader
+#
+# The application is stored below as text and compiled a few KB at a
+# time. Compiling the whole program in one go uses up the memory the
+# Bluetooth radio needs to start ("active OSError 5"). Bluetooth is
+# started in the 'startup' piece, before the big parts are compiled.
+# ============================================================
+import gc
+gc.collect()
+_P = []
+_P.append(r'''# ============================================================
 # DigiCure  -  ESP32-S3 (DigiComp N16R8)  -  main.py
 # 240x280 ST7789 + CST816T touch, MicroPython
 #
@@ -8,10 +19,13 @@
 # * Vault is AES-256-CBC + HMAC-SHA256, key derived from your PIN.
 #   The PIN itself is never stored. First boot asks you to choose one.
 # * Wrong PIN counter is stored in flash; lockout grows with fails.
-# * Add via Wi-Fi (own access point, random password, tap to save).
 # * USB keyboard typing (needs the usb-device-keyboard package).
+# * Bluetooth (BLE) keyboard typing (simple pairing, tested setup).
+# * Website can ask for a password over the USB cable; you approve
+#   on this screen (ALLOW / DENY).
 # ============================================================
 
+import machine
 from machine import Pin, SPI, I2C
 import framebuf
 import time
@@ -21,6 +35,7 @@ import os
 import json
 import sys
 import select
+import binascii
 
 try:
     import hashlib
@@ -43,7 +58,7 @@ PIN_LEN = 4            # changing this later means a new vault
 KDF_ROUNDS = 3000
 VAULT_FILE = "/vault.enc"
 FAIL_FILE = "/fails.txt"
-AP_TIMEOUT_S = 180
+ERR_FILE = "/err.txt"
 ROWS = 4               # entries per page
 
 W = 240
@@ -59,9 +74,10 @@ fb = None
 STRIP_H = 20
 
 
-def alloc_fb():
+def alloc_fb(force_small=False):
     global buf, fb, STRIP_H
-    for h in (280, 140, 70, 40, 20):
+    sizes = (10,) if force_small else (280, 140, 70, 40, 20, 10)
+    for h in sizes:
         gc.collect()
         try:
             buf = bytearray(W * h * 2)
@@ -74,10 +90,341 @@ def alloc_fb():
     raise MemoryError("no RAM for display buffer")
 
 
-alloc_fb()
-gc.collect()
 
 # ============================================================
+# BLUETOOTH KEYBOARD (BLE HID)
+# ============================================================
+
+BT_NAME = "DigiCure"
+BOND_FILE = "/bonds.json"
+MODE_FILE = "/mode.txt"
+
+_type_mode = "usb"
+_ble = None
+_bt_h = None
+_bt_conn = None
+_bt_enc = False
+_bt_pass = 0
+_bt_err = ""
+_bt_tried = False
+_bt_dirty = False
+_bt_bonds = {}
+
+# Standard keyboard: 1 modifier byte, 1 reserved byte, 6 key codes
+_HID_MAP = bytes([
+    0x05, 0x01, 0x09, 0x06, 0xA1, 0x01, 0x05, 0x07, 0x19, 0xE0, 0x29, 0xE7,
+    0x15, 0x00, 0x25, 0x01, 0x75, 0x01, 0x95, 0x08, 0x81, 0x02, 0x95, 0x01,
+    0x75, 0x08, 0x81, 0x01, 0x95, 0x06, 0x75, 0x08, 0x15, 0x00, 0x25, 0x65,
+    0x05, 0x07, 0x19, 0x00, 0x29, 0x65, 0x81, 0x00, 0xC0])
+
+
+STEP_FILE = "/step.txt"
+_bt_last = 0
+_bt_last_ms = 0
+
+
+BT_FILE = "/bterr.txt"
+
+
+def crumb(t, fn=None):
+    # Remember the last step reached, so we can see where a restart happened.
+    try:
+        with open(fn or STEP_FILE, "w") as f:
+            f.write(t)
+    except OSError:
+        pass
+
+
+def last_bt():
+    try:
+        with open(BT_FILE) as f:
+            return f.read().strip() or "none"
+    except OSError:
+        return "none"
+
+
+def load_mode():
+    global _type_mode
+    try:
+        with open(MODE_FILE) as f:
+            _type_mode = "ble" if f.read().strip() == "ble" else "usb"
+    except OSError:
+        _type_mode = "usb"
+
+
+''')
+_P.append(r'''def save_mode():
+    try:
+        with open(MODE_FILE, "w") as f:
+            f.write(_type_mode)
+    except OSError:
+        pass
+
+
+def bt_load():
+    global _bt_bonds
+    _bt_bonds = {}
+    try:
+        with open(BOND_FILE) as f:
+            d = json.load(f)
+        for k, v in d.items():
+            t, h = k.split(":")
+            _bt_bonds[(int(t), binascii.unhexlify(h))] = binascii.unhexlify(v)
+    except Exception:
+        _bt_bonds = {}
+
+
+def bt_save():
+    try:
+        d = {}
+        for (t, k), v in _bt_bonds.items():
+            d["%d:%s" % (t, binascii.hexlify(k).decode())] = \
+                binascii.hexlify(v).decode()
+        with open(BOND_FILE, "w") as f:
+            json.dump(d, f)
+    except Exception as e:
+        print("bond save error:", e)
+
+
+def _bt_irq_inner(event, data):
+    global _bt_conn, _bt_enc, _bt_pass, _bt_dirty
+    if event == 1:                      # central connected
+        _bt_conn = data[0]
+        _bt_enc = False
+    elif event == 2:                    # central disconnected
+        _bt_conn = None
+        _bt_enc = False
+    elif event == 28:                   # encryption update
+        _bt_enc = bool(data[1])
+    elif event == 29:                   # get secret
+        sec_type, index, key = data
+        if key is None:
+            i = 0
+            for (t, k), v in _bt_bonds.items():
+                if t == sec_type:
+                    if i == index:
+                        return v
+                    i += 1
+            return None
+        return _bt_bonds.get((sec_type, bytes(key)))
+    elif event == 30:                   # set secret
+        sec_type, key, value = data
+        k = (sec_type, bytes(key))
+        if value is None:
+            if k in _bt_bonds:
+                del _bt_bonds[k]
+                _bt_dirty = True
+                return True
+            return False
+        _bt_bonds[k] = bytes(value)
+        _bt_dirty = True
+        return True
+    elif event == 31:                   # passkey action
+        conn, action, passkey = data
+        if action == 3:                 # we display the passkey
+            _bt_pass = int.from_bytes(os.urandom(4), "big") % 1000000
+            _ble.gap_passkey(conn, action, _bt_pass)
+
+
+def _bt_irq(event, data):
+    # Bluetooth callbacks must never raise or touch the filesystem.
+    global _bt_last, _bt_last_ms
+    _bt_last = event
+    _bt_last_ms = time.ticks_ms()
+    try:
+        return _bt_irq_inner(event, data)
+    except Exception:
+        return None
+
+
+def bt_flush():
+    # Save pairing keys from the main program, not from the callback.
+    global _bt_dirty
+    if _bt_dirty and _bt_conn is None:
+        _bt_dirty = False
+        bt_save()
+
+
+def bt_saved_count():
+    try:
+        with open(BOND_FILE) as f:
+            return len(json.load(f))
+    except Exception:
+        return 0
+
+
+def bt_finish():
+    # New pairing keys must reach flash, or the PC and the board forget each
+    # other when power is cut. Flash is only written while no connection is
+    # open, so close the link first; Windows reconnects by itself next time.
+    if not _bt_dirty:
+        return
+    bt_adv_stop()
+    if _bt_conn is not None:
+        try:
+            _ble.gap_disconnect(_bt_conn)
+        except Exception:
+            pass
+        t = 30
+        while _bt_conn is not None and t > 0:
+            time.sleep_ms(100)
+            t -= 1
+    bt_flush()
+
+
+def bt_init():
+    global _ble, _bt_h, _bt_err, _bt_tried
+    if _ble is not None:
+        return True
+    if _bt_tried:
+        return False        # never start Bluetooth twice in one boot
+    _bt_tried = True
+    st = "import"
+    crumb("init " + st, BT_FILE)
+    try:
+        import bluetooth
+        gc.collect()
+        bt_load()
+        st = "BLE()"
+        crumb("init " + st, BT_FILE)
+        ble = bluetooth.BLE()
+        st = "active"
+        crumb("init " + st, BT_FILE)
+        try:
+            ble.active(True)
+        except OSError:
+            gc.collect()
+            try:
+                ble.active(False)
+            except Exception:
+                pass
+            time.sleep_ms(300)
+            ble.active(True)
+        st = "config"
+        crumb("init " + st, BT_FILE)
+        try:
+            ble.config(gap_name=BT_NAME)
+        except Exception:
+            pass
+        try:
+            # Simple pairing: this is the setup proven to work in ble_test4.py
+            ble.config(bond=True, mitm=False, le_secure=True, io=3)
+        except Exception as e:
+            print("BLE security config:", e)
+        st = "irq"
+        crumb("init " + st, BT_FILE)
+        ble.irq(_bt_irq)
+        st = "services"
+        crumb("init " + st, BT_FILE)
+        U = bluetooth.UUID
+        dis = (U(0x180A), (
+            (U(0x2A29), bluetooth.FLAG_READ),
+            (U(0x2A24), bluetooth.FLAG_READ),
+            (U(0x2A50), bluetooth.FLAG_READ),
+        ))
+        hid = (U(0x1812), (
+            (U(0x2A4A), bluetooth.FLAG_READ),
+            (U(0x2A4B), bluetooth.FLAG_READ),
+            (U(0x2A4C), bluetooth.FLAG_WRITE_NO_RESPONSE),
+            (U(0x2A4D), bluetooth.FLAG_READ | bluetooth.FLAG_NOTIFY
+             | getattr(bluetooth, "FLAG_READ_ENCRYPTED", 0x0200),
+             ((U(0x2908), bluetooth.FLAG_READ),)),
+            (U(0x2A4E), bluetooth.FLAG_READ
+             | bluetooth.FLAG_WRITE_NO_RESPONSE),
+        ))
+        bat = (U(0x180F), ((U(0x2A19),
+                            bluetooth.FLAG_READ | bluetooth.FLAG_NOTIFY),))
+        d, h, b = ble.gatts_register_services((dis, hid, bat))
+        st = "write"
+        crumb("init " + st, BT_FILE)
+        ble.gatts_write(d[0], b"DigiCure")
+        ble.gatts_write(d[1], b"DigiCure")
+        ble.gatts_write(d[2], b"\x02\x09\x12\x01\x00\x01\x00")
+        ble.gatts_write(h[0], b"\x11\x01\x00\x02")
+        ble.gatts_write(h[1], _HID_MAP)
+        ble.gatts_write(h[3], bytes(8))
+        ble.gatts_write(h[4], b"\x00\x01")
+        ble.gatts_write(h[5], b"\x01")
+        ble.gatts_write(b[0], b"\x64")
+        _bt_h = h[3]
+        _ble = ble
+        crumb("init ok", BT_FILE)
+        return True
+    except Exception as e:
+        _bt_err = "%s %s: %s" % (st, type(e).__name__, e)
+        print("BLE unavailable:", _bt_err)
+        crumb("%s %s%s free=%dK" % (st, type(e).__name__[:2],
+                                    e.args[0] if e.args else "",
+                                    gc.mem_free() // 1024), BT_FILE)
+        try:
+            import bluetooth
+            bluetooth.BLE().active(False)
+        except Exception:
+            pass
+        _ble = None
+        return False
+
+
+''')
+_P.append(r'''def bt_adv():
+    name = BT_NAME.encode()
+    adv = b"\x02\x01\x06" + b"\x03\x19\xc1\x03" + b"\x03\x03\x12\x18"
+    resp = bytes([len(name) + 1, 9]) + name
+    _ble.gap_advertise(100000, adv_data=adv, resp_data=resp)
+
+
+def bt_adv_stop():
+    try:
+        _ble.gap_advertise(None)
+    except Exception:
+        pass
+
+
+def bt_type_text(s):
+    try:
+        time.sleep_ms(300)      # let Windows finish subscribing
+        for ch in s:
+            code, shift = hid_code(ch)
+            if code is None:
+                continue
+            _ble.gatts_notify(_bt_conn, _bt_h,
+                              bytes([2 if shift else 0, 0, code, 0, 0, 0, 0, 0]))
+            time.sleep_ms(40)
+            _ble.gatts_notify(_bt_conn, _bt_h, bytes(8))
+            time.sleep_ms(120)
+        return True
+    except Exception as e:
+        print("BLE type error:", e)
+        return False
+
+
+def bt_reset():
+    global _bt_bonds
+    _bt_bonds = {}
+    try:
+        os.remove(BOND_FILE)
+    except OSError:
+        pass
+    if _ble is not None and _bt_conn is not None:
+        try:
+            _ble.gap_disconnect(_bt_conn)
+        except Exception:
+            pass
+
+
+''')
+_P.append(r'''# Bluetooth must start FIRST, before the display and touch hardware take
+# their share of RAM (starting it later failed with "active OSError 5").
+# In Bluetooth mode the display buffer is kept small (10-row strips).
+load_mode()
+if _type_mode == "ble":
+    bt_init()
+alloc_fb(force_small=(_type_mode == "ble"))
+gc.collect()
+
+
+''')
+_P.append(r'''# ============================================================
 # PINS
 # ============================================================
 
@@ -241,6 +588,7 @@ def render_screen(draw_function):
         begin_strip(y)
         draw_function()
         end_strip()
+        time.sleep_ms(1)   # let the Bluetooth task run between strips
 
 
 # ============================================================
@@ -248,7 +596,8 @@ def render_screen(draw_function):
 # ============================================================
 
 
-def visible(y, h=1):
+''')
+_P.append(r'''def visible(y, h=1):
     return y + h > _current_y and y < _current_y + STRIP_H
 
 
@@ -387,8 +736,10 @@ _salt = None
 def derive(pin, salt):
     p = pin.encode()
     k = sha256(salt + p).digest()
-    for _ in range(KDF_ROUNDS):
+    for i in range(KDF_ROUNDS):
         k = sha256(k + salt + p).digest()
+        if i % 250 == 0:
+            time.sleep_ms(1)
     return sha256(k + b"E").digest(), sha256(k + b"M").digest()
 
 
@@ -400,7 +751,8 @@ def hmac256(key, msg):
     return sha256(opad + inner).digest()
 
 
-def ct_eq(a, b):
+''')
+_P.append(r'''def ct_eq(a, b):
     if len(a) != len(b):
         return False
     r = 0
@@ -444,7 +796,18 @@ def save_vault():
     os.rename(tmp, VAULT_FILE)
 
 
-def load_vault(pin):
+def vault_salt():
+    try:
+        with open(VAULT_FILE, "rb") as f:
+            b = f.read(19)
+        if len(b) == 19 and b[:3] == MAGIC:
+            return binascii.hexlify(b[3:19]).decode()
+    except OSError:
+        pass
+    return None
+
+
+def load_keys(ke, km):
     global entries, _ke, _km, _salt
     with open(VAULT_FILE, "rb") as f:
         blob = f.read()
@@ -454,16 +817,21 @@ def load_vault(pin):
     iv = blob[19:35]
     ct = blob[35:-32]
     mac = blob[-32:]
-    if len(ct) % 16:
-        return False
-    ke, km = derive(pin, salt)
-    if not ct_eq(hmac256(km, blob[:-32]), mac):
+    if len(ct) % 16 or not ct_eq(hmac256(km, blob[:-32]), mac):
         return False
     pt = _cl.aes(ke, 2, iv).decrypt(ct)
     pad = pt[-1]
     entries = json.loads(pt[:-pad])
     _ke, _km, _salt = ke, km, salt
     return True
+
+
+def load_vault(pin):
+    s = vault_salt()
+    if not s:
+        return False
+    ke, km = derive(pin, binascii.unhexlify(s))
+    return load_keys(ke, km)
 
 
 def set_new_pin(pin):
@@ -549,6 +917,37 @@ def hid_init():
         return False
 
 
+''')
+_P.append(r'''def _kb_send(k, down, up):
+    # send_keys returns False when the report could not be queued in time;
+    # retry then, so a key-up is never lost.
+    for _ in range(40):
+        try:
+            r = k.send_keys(down, up) if up else k.send_keys(down)
+        except Exception as e:
+            print("HID send error:", e)
+            return False
+        if r is not False:
+            return True
+        time.sleep_ms(5)
+    return False
+
+
+def _send_rep(k, rep):
+    # Send one raw 8-byte keyboard report, retrying while the USB
+    # endpoint is busy. Raw reports avoid the library's key-state
+    # tracking, which could leave a key "held down" (repeating).
+    for _ in range(10):
+        try:
+            if k.send_report(rep):
+                return True
+        except Exception as e:
+            print("HID send error:", e)
+            return False
+        time.sleep_ms(10)
+    return False
+
+
 def type_text(s):
     k = _kbd
     t = 30
@@ -557,194 +956,25 @@ def type_text(s):
         t -= 1
     if not k.is_open():
         return False
-    for ch in s:
-        code, shift = hid_code(ch)
-        if code is None:
-            continue
-        keys = [0xE1, code] if shift else [code]
-        k.send_keys(keys)
-        time.sleep_ms(15)
-        k.send_keys([], keys)
-        time.sleep_ms(15)
-    return True
-
-
-# ============================================================
-# WI-FI ADD (own access point, on demand)
-# ============================================================
-
-_srv = None
-_ap = None
-_ssid = ""
-_apw = ""
-_wifi_deadline = 0
-_wleft = 0
-_pending = None
-
-_PAGE = (
-    "<!doctype html><html><head><meta charset='utf-8'>"
-    "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-    "<title>DigiCure</title><style>body{font-family:sans-serif;"
-    "background:#2a1846;color:#fff4e1;padding:20px}input{width:100%;"
-    "padding:12px;margin:6px 0 14px;border-radius:8px;border:0;"
-    "font-size:16px;box-sizing:border-box}button{width:100%;padding:14px;"
-    "border:0;border-radius:8px;background:#ffaa5a;font-size:18px}"
-    "</style></head><body><h2>DigiCure</h2>"
-    "<form method='POST' action='/'>"
-    "Name<input name='n' maxlength='24' required>"
-    "Username<input name='u' maxlength='48'>"
-    "Password<input name='p' type='password' maxlength='64' required>"
-    "<button>Send to device</button></form></body></html>"
-)
-
-_DONE = (
-    "<!doctype html><html><head><meta charset='utf-8'>"
-    "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-    "</head><body style='font-family:sans-serif;padding:20px'>"
-    "<h3>Received</h3><p>Now tap SAVE on the DigiCure screen.</p>"
-    "</body></html>"
-)
-
-
-def rand_pw(n):
-    chars = "abcdefghjkmnpqrstuvwxyz23456789"
-    r = os.urandom(n)
-    return "".join([chars[b % len(chars)] for b in r])
-
-
-def wifi_start():
-    global _srv, _ap, _ssid, _apw, _wifi_deadline, _wleft
-    import network
-    import socket
-    gc.collect()
-    ap = network.WLAN(network.AP_IF)
-    ap.active(True)
-    mac = ap.config("mac")
-    _ssid = "DigiCure-%02X%02X" % (mac[4], mac[5])
-    _apw = rand_pw(10)
-    ap.config(essid=_ssid, password=_apw, authmode=network.AUTH_WPA2_PSK)
-    _ap = ap
-    s = socket.socket()
+    ok = True
     try:
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    except Exception:
-        pass
-    s.bind(("0.0.0.0", 80))
-    s.listen(1)
-    s.setblocking(False)
-    _srv = s
-    _wifi_deadline = time.ticks_add(time.ticks_ms(), AP_TIMEOUT_S * 1000)
-    _wleft = AP_TIMEOUT_S
-
-
-def wifi_stop():
-    global _srv, _ap
-    try:
-        if _srv:
-            _srv.close()
-    except Exception:
-        pass
-    _srv = None
-    try:
-        if _ap:
-            _ap.active(False)
-    except Exception:
-        pass
-    _ap = None
-    gc.collect()
-
-
-def _read_req(conn):
-    data = b""
-    while b"\r\n\r\n" not in data:
-        c = conn.recv(512)
-        if not c:
-            break
-        data += c
-        if len(data) > 4096:
-            break
-    head, _, body = data.partition(b"\r\n\r\n")
-    lines = head.split(b"\r\n")
-    first = lines[0] if lines else b""
-    cl = 0
-    for ln in lines[1:]:
-        if ln.lower().startswith(b"content-length:"):
-            try:
-                cl = int(ln.split(b":")[1])
-            except ValueError:
-                cl = 0
-    while len(body) < cl and len(body) < 2048:
-        c = conn.recv(512)
-        if not c:
-            break
-        body += c
-    return first, body
-
-
-def _urldecode(b):
-    b = b.replace(b"+", b" ")
-    out = bytearray()
-    i = 0
-    n = len(b)
-    while i < n:
-        if b[i] == 37 and i + 2 < n:
-            try:
-                out.append(int(b[i + 1:i + 3].decode(), 16))
-                i += 3
+        for ch in s:
+            code, shift = hid_code(ch)
+            if code is None:
                 continue
-            except ValueError:
-                pass
-        out.append(b[i])
-        i += 1
-    try:
-        return bytes(out).decode("utf-8")
-    except UnicodeError:
-        return ""
-
-
-def _parse_form(body):
-    d = {}
-    for part in body.split(b"&"):
-        if b"=" in part:
-            k, v = part.split(b"=", 1)
-            d[k.decode()] = _urldecode(v)
-    return d
-
-
-def _send(conn, html):
-    conn.send(b"HTTP/1.0 200 OK\r\nContent-Type: text/html; "
-              b"charset=utf-8\r\nConnection: close\r\n\r\n")
-    conn.send(html.encode())
-
-
-def wifi_poll():
-    try:
-        conn, _ = _srv.accept()
-    except OSError:
-        return None
-    result = None
-    try:
-        conn.settimeout(3)
-        first, body = _read_req(conn)
-        if first.startswith(b"POST"):
-            f = _parse_form(body)
-            n = f.get("n", "").strip()[:24]
-            u = f.get("u", "").strip()[:48]
-            p = f.get("p", "")[:64]
-            if n and p:
-                result = {"n": n, "u": u, "p": p, "f": 0}
-                _send(conn, _DONE)
-            else:
-                _send(conn, _PAGE)
-        else:
-            _send(conn, _PAGE)
-    except Exception as e:
-        print("wifi req error:", e)
-    try:
-        conn.close()
-    except Exception:
-        pass
-    return result
+            rep = bytes([2 if shift else 0, 0, code, 0, 0, 0, 0, 0])
+            if not _send_rep(k, rep):
+                ok = False
+                break
+            time.sleep_ms(25)
+            if not _send_rep(k, bytes(8)):
+                ok = False
+                break
+            time.sleep_ms(25)
+    finally:
+        # always make sure no key is left pressed
+        _send_rep(k, bytes(8))
+    return ok
 
 
 # ============================================================
@@ -767,6 +997,10 @@ def redraw():
     D = False
 
 
+def after_action():
+    go("home")
+
+
 # ---------------- USB serial link (used by the website) ----------------
 # Lines look like  DC{"c":"list"}  (host -> device) and
 # DC{"r":"list",...}  (device -> host). The PIN is never sent over USB.
@@ -775,18 +1009,58 @@ _poll.register(sys.stdin, select.POLLIN)
 _rx = ""
 _link_add = False
 _link_del = -1
-_BUSY = ("wifi", "review", "confdel", "pin")
+_link_reveal = -1
+_BUSY = ("review", "confdel", "confreveal", "pin")
+
 
 
 def link_send(d):
     print("DC" + json.dumps(d))
 
 
+def do_login(m):
+    global _lkey
+    if _ke is not None:
+        link_send({"r": "login", "ok": 1})
+        return
+    if S not in ("lock", "pin") or not vault_exists():
+        link_send({"r": "login", "err": "busy"})
+        return
+    ok = False
+    try:
+        ok = load_keys(binascii.unhexlify(m["ke"]),
+                       binascii.unhexlify(m["km"]))
+    except Exception as e:
+        print("login error:", e)
+    if ok:
+        set_fails(0)
+        link_send({"r": "login", "ok": 1})
+        go("home")
+        return
+    n = get_fails() + 1
+    set_fails(n)
+    p = penalty(n)
+    link_send({"r": "login", "err": "wrong", "wait": p})
+    if p:
+        lockout_wait(p)
+        _lkey = None
+        go(S)
+
+
 def link_cmd(m):
-    global _pending, _link_add, _link_del
+    global _pending, _link_add, _link_del, _link_reveal
     c = m.get("c")
     if c == "hello":
-        link_send({"r": "hello", "locked": _ke is None, "n": len(entries)})
+        link_send({"r": "hello", "locked": _ke is None, "n": len(entries),
+                   "m": _type_mode})
+    elif c == "salt":
+        s = vault_salt()
+        if s:
+            link_send({"r": "salt", "s": s, "rounds": KDF_ROUNDS})
+        else:
+            link_send({"r": "salt", "err": "novault"})
+    elif c == "login":
+        do_login(m)
     elif _ke is None:
         link_send({"r": c, "err": "locked"})
     elif c == "list":
@@ -812,9 +1086,17 @@ def link_cmd(m):
             go("confdel")
         else:
             link_send({"r": "del", "err": "bad"})
+    elif c == "reveal":
+        i = m.get("i", -1)
+        if isinstance(i, int) and 0 <= i < len(entries):
+            _link_reveal = i
+            go("confreveal")
+        else:
+            link_send({"r": "reveal", "err": "bad"})
 
 
-def link_poll():
+''')
+_P.append(r'''def link_poll():
     global _rx
     while _poll.poll(0):
         ch = sys.stdin.read(1)
@@ -958,7 +1240,8 @@ def lockout_wait(secs):
         time.sleep_ms(100)
 
 
-def open_pin():
+''')
+_P.append(r'''def open_pin():
     global _pin_digits, _pin_bad, _pin_dx, _pin_mode, _boot_pen_done
     _pin_digits = ""
     _pin_bad = False
@@ -1096,7 +1379,8 @@ def icon(name, cx, cy):
             fill_circle(cx + kx, yy + 1, 5, INK)
 
 
-def draw_home_strip():
+''')
+_P.append(r'''def draw_home_strip():
     draw_sky_strip()
     fill_circle(26, 30, 13, HALO2)
     fill_circle(26, 30, 9, SUN)
@@ -1182,10 +1466,109 @@ def draw_detail_strip():
     btn("back", 124, 220, 104, 34, "BACK")
 
 
-def do_type(what):
+def do_type_ble(s):
+    if not bt_init():
+        show_msg("Bluetooth error", clip(_bt_err, 28), clip(_bt_err[28:], 28))
+        time.sleep_ms(4000)
+        go("detail")
+        return
+    # Bluetooth callbacks run Python code in the Bluetooth task, at the same
+    # time as this program. Pause the garbage collector while Bluetooth is
+    # busy so the two can never collide in memory.
+    gc.collect()
+    gc.disable()
+    try:
+        _do_type_ble(s)
+    finally:
+        gc.enable()
+    gc.collect()
+
+
+def _do_type_ble(s):
+    global _bt_pass
+    if not (_bt_conn is not None and _bt_enc):
+        _bt_pass = 0
+        while touch() is not None:
+            time.sleep_ms(20)
+        try:
+            bt_adv()
+        except Exception as e:
+            show_msg("BLE error", clip(str(e), 28))
+            time.sleep_ms(2200)
+            go("detail")
+            return
+        end = time.ticks_add(time.ticks_ms(), 60000)
+        last = None
+        conn_t = None
+        stuck = False
+        saved_dev = bool(_bt_bonds)
+        while not (_bt_conn is not None and _bt_enc):
+            if time.ticks_diff(end, time.ticks_ms()) <= 0 \
+                    or touch() is not None:
+                bt_adv_stop()
+                show_msg("Not paired")
+                while touch() is not None:
+                    time.sleep_ms(20)
+                time.sleep_ms(800)
+                go("detail")
+                return
+            has = _bt_conn is not None
+            if not has:
+                conn_t = None
+            elif conn_t is None:
+                conn_t = time.ticks_ms()
+            if has and not stuck \
+                    and time.ticks_diff(time.ticks_ms(), conn_t) > 10000:
+                # Connected but never secured: the PC and the board disagree
+                # about the saved pairing. Forget the board's side; the PC
+                # must forget DigiCure too, then pair again.
+                stuck = True
+                bt_reset()
+                time.sleep_ms(500)
+                try:
+                    bt_adv()
+                except Exception:
+                    pass
+            state = (_bt_pass, has, stuck)
+            if state != last:
+                last = state
+                if _bt_pass:
+                    show_msg("Enter on PC", "%06d" % _bt_pass, "Tap to cancel")
+                elif stuck:
+                    show_msg("Not secure", "On PC: remove DigiCure",
+                             "then add it again")
+                elif has:
+                    show_msg("Connected", "Securing link...", "Tap to cancel")
+                elif saved_dev:
+                    show_msg("Connecting...", "to your saved device",
+                             "Tap to cancel")
+                else:
+                    show_msg("Pair 'DigiCure'", "Open PC Bluetooth",
+                             "Tap to cancel")
+            time.sleep_ms(200)
+        _bt_pass = 0
+    t0 = time.ticks_ms()
+    while time.ticks_diff(time.ticks_ms(), _bt_last_ms) < 1500 \
+            and time.ticks_diff(time.ticks_ms(), t0) < 8000:
+        time.sleep_ms(100)
+    for n in (3, 2, 1):
+        show_msg("Click field", "Typing in %d" % n)
+        time.sleep_ms(1000)
+    ok = bt_type_text(s)
+    bt_finish()
+    show_msg("Typed" if ok else "Not connected")
+    time.sleep_ms(900)
+    go("detail")
+
+
+''')
+_P.append(r'''def do_type(what):
     e = entries[_cur]
     s = e["u"] if what == "u" else e["p"]
     if not s:
+        return
+    if _type_mode == "ble":
+        do_type_ble(s)
         return
     if not hid_init():
         show_msg("No USB keys", "Install usb-device-keyboard")
@@ -1205,57 +1588,12 @@ def do_type(what):
 def draw_add_strip():
     draw_sky_strip()
     textc("Add password", 16, CREAM, 2)
-    btn("wifi", 12, 70, 216, 56, "ADD VIA WI-FI", sc=2)
-    textc("Phone or laptop fills the form,", 146, CREAM, 1)
-    textc("you approve on this screen", 160, CREAM, 1)
+    text("Use the DigiCure website:", 14, 70, CREAM, 1)
+    text("1. Plug in the USB cable", 14, 92, CREAM, 1)
+    text("2. Open the site, Connect", 14, 108, CREAM, 1)
+    text("3. Add it, then tap SAVE", 14, 124, CREAM, 1)
+    text("   on this screen", 14, 140, CREAM, 1)
     btn("back", 60, 222, 120, 40, "BACK")
-
-
-def start_wifi():
-    try:
-        wifi_start()
-    except Exception as e:
-        print("wifi error:", e)
-        wifi_stop()
-        show_msg("Wi-Fi error", clip(str(e), 28))
-        time.sleep_ms(2500)
-        go("add")
-        return
-    go("wifi")
-
-
-def draw_wifi_strip():
-    draw_sky_strip()
-    textc("Add via Wi-Fi", 10, CREAM, 2)
-    text("1. Join this Wi-Fi:", 12, 46, CREAM, 1)
-    text(_ssid, 12, 60, CREAM, 2)
-    text("Password:", 12, 88, CREAM, 1)
-    text(_apw, 12, 102, CREAM, 2)
-    text("2. Open in browser:", 12, 132, CREAM, 1)
-    text("http://192.168.4.1", 12, 146, CREAM, 1)
-    text("Waiting... %d s" % _wleft, 12, 176, CREAM, 1)
-    btn("cancel", 60, 220, 120, 40, "CANCEL")
-
-
-def wifi_tick():
-    global _pending, _wleft
-    left = time.ticks_diff(_wifi_deadline, time.ticks_ms())
-    if left <= 0:
-        wifi_stop()
-        show_msg("Timed out")
-        time.sleep_ms(1200)
-        go("add")
-        return
-    secs = left // 1000
-    if secs != _wleft:
-        _wleft = secs
-        redraw()
-    req = wifi_poll()
-    if req:
-        _pending = req
-        time.sleep_ms(300)
-        wifi_stop()
-        go("review")
 
 
 def draw_confdel_strip():
@@ -1265,6 +1603,15 @@ def draw_confdel_strip():
     text("Requested from the website", 14, 96, CREAM, 1)
     btn("yes", 12, 200, 104, 44, "DELETE", bg=RED, fg=CREAM)
     btn("no", 124, 200, 104, 44, "CANCEL")
+
+
+def draw_confreveal_strip():
+    draw_sky_strip()
+    textc("Send password?", 14, RED, 2)
+    text(clip(entries[_link_reveal]["n"], 28), 14, 70, CREAM, 1)
+    text("Requested over USB cable", 14, 96, CREAM, 1)
+    btn("yes", 12, 200, 104, 44, "ALLOW", bg=RED, fg=CREAM)
+    btn("no", 124, 200, 104, 44, "DENY")
 
 
 def draw_review_strip():
@@ -1284,22 +1631,37 @@ def draw_review_strip():
 def draw_settings_strip():
     draw_sky_strip()
     textc("Settings", 16, CREAM, 2)
-    btn("pin", 12, 64, 216, 44, "CHANGE PIN", sc=1)
-    btn("about", 12, 118, 216, 44, "ABOUT", sc=1)
-    btn("back", 60, 220, 120, 40, "BACK")
+    btn("pin", 12, 52, 216, 38, "CHANGE PIN")
+    btn("about", 12, 96, 216, 38, "ABOUT")
+    btn("mode", 12, 140, 216, 38,
+        "TYPE VIA: " + ("BLUETOOTH" if _type_mode == "ble" else "USB"))
+    btn("btreset", 12, 184, 216, 38, "NEW BLUETOOTH DEVICE")
+    btn("back", 60, 228, 120, 34, "BACK")
+
+
+def last_err():
+    try:
+        with open(ERR_FILE) as f:
+            lines = f.read().strip().split("\n")
+        return lines[-1] if lines and lines[-1] else "none"
+    except OSError:
+        return "none"
 
 
 def draw_about_strip():
     draw_sky_strip()
-    textc("DigiCure", 16, CREAM, 2)
+    textc("DigiCure v10", 16, CREAM, 2)
     gc.collect()
     text("Entries: %d" % len(entries), 14, 64, CREAM, 1)
     text("Free RAM: %d KB" % (gc.mem_free() // 1024), 14, 82, CREAM, 1)
-    text("PSRAM: %s" % ("yes" if HAS_PSRAM else "no"), 14, 100, CREAM, 1)
+    text("Saved keys: %d" % bt_saved_count(), 14, 100, CREAM, 1)
     text("Display: %s" % (
         "full frame" if STRIP_H == H else "%d-row strips" % STRIP_H),
         14, 118, CREAM, 1)
-    text("Vault: AES-256 + HMAC", 14, 136, CREAM, 1)
+    text("BT: " + clip(last_bt(), 24), 14, 136, CREAM, 1)
+    text("Reset code: %s" % machine.reset_cause(), 14, 154, CREAM, 1)
+    text("Mode: %s" % _type_mode, 14, 172, CREAM, 1)
+    text("Err: " + clip(last_err(), 23), 14, 190, CREAM, 1)
     btn("back", 60, 220, 120, 40, "BACK")
 
 
@@ -1309,22 +1671,23 @@ DRAW = {
     "list": draw_list_strip,
     "detail": draw_detail_strip,
     "add": draw_add_strip,
-    "wifi": draw_wifi_strip,
     "review": draw_review_strip,
     "confdel": draw_confdel_strip,
+    "confreveal": draw_confreveal_strip,
     "settings": draw_settings_strip,
     "about": draw_about_strip,
 }
 
 
-# ============================================================
+''')
+_P.append(r'''# ============================================================
 # TAP HANDLING
 # ============================================================
 
 
 def dispatch(bid):
     global _page, _cur, _show, _arm, _pin_mode, _pin_digits, _pending
-    global _link_add, _link_del
+    global _link_add, _link_del, _link_reveal, _type_mode
     if S == "pin":
         pin_key(bid)
 
@@ -1388,15 +1751,8 @@ def dispatch(bid):
             do_type("p")
 
     elif S == "add":
-        if bid == "wifi":
-            start_wifi()
-        elif bid == "back":
+        if bid == "back":
             go("home")
-
-    elif S == "wifi":
-        if bid == "cancel":
-            wifi_stop()
-            go("add")
 
     elif S == "review":
         if bid == "save":
@@ -1408,15 +1764,15 @@ def dispatch(bid):
                 link_send({"r": "add", "ok": 1})
             show_msg("Saved")
             time.sleep_ms(900)
-            go("home")
+            after_action()
         elif bid == "drop":
             _pending = None
             if _link_add:
                 _link_add = False
                 link_send({"r": "add", "ok": 0})
-                go("home")
+                after_action()
             else:
-                go("add")
+                go("home")
 
     elif S == "confdel":
         if bid == "yes" and 0 <= _link_del < len(entries):
@@ -1426,7 +1782,16 @@ def dispatch(bid):
         else:
             link_send({"r": "del", "ok": 0})
         _link_del = -1
-        go("home")
+        after_action()
+
+    elif S == "confreveal":
+        if bid == "yes" and 0 <= _link_reveal < len(entries):
+            link_send({"r": "reveal", "ok": 1,
+                       "p": entries[_link_reveal]["p"]})
+        else:
+            link_send({"r": "reveal", "ok": 0})
+        _link_reveal = -1
+        after_action()
 
     elif S == "settings":
         if bid == "pin":
@@ -1435,6 +1800,22 @@ def dispatch(bid):
             go("pin")
         elif bid == "about":
             go("about")
+        elif bid == "mode":
+            _type_mode = "ble" if _type_mode == "usb" else "usb"
+            save_mode()
+            show_msg("Restarting...",
+                     "Mode: " + ("BLUETOOTH" if _type_mode == "ble" else "USB"))
+            time.sleep_ms(900)
+            machine.reset()
+        elif bid == "btreset":
+            if _bt_bonds or bt_saved_count():
+                bt_reset()
+                show_msg("Saved device removed", "On PC: remove DigiCure",
+                         "then tap TYPE to pair")
+            else:
+                show_msg("No saved device", "Tap TYPE to pair one")
+            time.sleep_ms(2200)
+            go("settings")
         elif bid == "back":
             go("home")
 
@@ -1443,7 +1824,8 @@ def dispatch(bid):
             go("settings")
 
 
-# ============================================================
+''')
+_P.append(r'''# ============================================================
 # MAIN
 # ============================================================
 
@@ -1453,6 +1835,7 @@ def main():
     lcd_init()
     touch_init()
     recover_vault()
+    load_mode()
     print("DigiCure: display", "full" if STRIP_H == H else STRIP_H,
           "rows | PSRAM heap:", HAS_PSRAM, "| free:", gc.mem_free())
 
@@ -1463,6 +1846,8 @@ def main():
         tap = pt is not None and not was_down
         was_down = pt is not None
         link_poll()
+        if _bt_dirty:
+            bt_flush()
 
         if S == "lock":
             blink = (_lock_frame // 18) % 2 if _lock_frame > RISE_FRAMES else 0
@@ -1475,8 +1860,6 @@ def main():
             if tap:
                 open_pin()
         else:
-            if S == "wifi":
-                wifi_tick()
             if D:
                 redraw()
             if tap:
@@ -1493,10 +1876,18 @@ gc.collect()
 try:
     main()
 except KeyboardInterrupt:
-    wifi_stop()
     raise
 except Exception as e:
-    import sys
-    wifi_stop()
+    try:
+        with open(ERR_FILE, "w") as f:
+            sys.print_exception(e, f)
+    except Exception:
+        pass
     sys.print_exception(e)
     raise
+''')
+
+_g = globals()
+for _i in range(len(_P)):
+    exec(_P[_i], _g)
+    gc.collect()
