@@ -11,7 +11,6 @@ Your passwords live on a small touchscreen device, not in the cloud. When you ne
 
 ## ✨ Features
 
-- 🔐 **Encrypted vault** stored on the device: AES-256-CBC with an HMAC-SHA256 integrity check, key derived from your PIN. The PIN itself is never stored.
 - 🖐️ **Touchscreen interface** on the device: PIN pad, password list, favorites, search by browsing, settings.
 - ⌨️ **Types passwords for you** as a USB keyboard or a Bluetooth (BLE) keyboard. No clipboard, nothing to copy.
 - 🌐 **Browser-based setup and manager** using Web Serial: flash MicroPython, upload the app, and add, view or delete credentials from your computer.
