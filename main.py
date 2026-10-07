@@ -1,30 +1,3 @@
-# ============================================================
-# DigiCure main.py  -  loader
-#
-# The application is stored below as text and compiled a few KB at a
-# time. Compiling the whole program in one go uses up the memory the
-# Bluetooth radio needs to start ("active OSError 5"). Bluetooth is
-# started in the 'startup' piece, before the big parts are compiled.
-# ============================================================
-import gc
-gc.collect()
-_P = []
-_P.append(r'''# ============================================================
-# DigiCure  -  ESP32-S3 (DigiComp N16R8)  -  main.py
-# 240x280 ST7789 + CST816T touch, MicroPython
-#
-# * Framebuffer size adapts to free RAM (full screen if PSRAM is
-#   enabled, otherwise horizontal strips). It never fails to boot
-#   with "can't allocate".
-# * Vault is AES-256-CBC + HMAC-SHA256, key derived from your PIN.
-#   The PIN itself is never stored. First boot asks you to choose one.
-# * Wrong PIN counter is stored in flash; lockout grows with fails.
-# * USB keyboard typing (needs the usb-device-keyboard package).
-# * Bluetooth (BLE) keyboard typing (simple pairing, tested setup).
-# * Website can ask for a password over the USB cable; you approve
-#   on this screen (ALLOW / DENY).
-# ============================================================
-
 import machine
 from machine import Pin, SPI, I2C
 import framebuf
@@ -48,7 +21,11 @@ except ImportError:
     import ucryptolib as _cl
 
 gc.collect()
-HAS_PSRAM = gc.mem_free() > 1000000
+HAS_PSRAM = gc.mem_free() > 1_000_000
+if HAS_PSRAM:
+    # Collect less often now that there's real headroom. This reduces
+    # GC-pause collisions with the Bluetooth task during handshakes.
+    gc.threshold(gc.mem_free() // 4 + gc.mem_alloc())
 
 # ============================================================
 # SETTINGS
@@ -66,7 +43,25 @@ H = 280
 Y_OFF = 20
 
 # ============================================================
-# FRAMEBUFFER (adaptive)
+# MEMORY TRACKING (shown on the ABOUT screen)
+# ============================================================
+
+_min_free = 1 << 30     # lowest free heap ever seen this boot
+_boot_free = 0          # free heap right after the display buffer is ready
+
+
+def track_mem():
+    global _min_free
+    f = gc.mem_free()
+    if f < _min_free:
+        _min_free = f
+
+
+track_mem()
+
+
+# ============================================================
+# FRAMEBUFFER (adaptive, full-size whenever it fits)
 # ============================================================
 
 buf = None
@@ -74,10 +69,12 @@ fb = None
 STRIP_H = 20
 
 
-def alloc_fb(force_small=False):
+def alloc_fb():
     global buf, fb, STRIP_H
-    sizes = (10,) if force_small else (280, 140, 70, 40, 20, 10)
-    for h in sizes:
+    # Try the full screen first - this now succeeds in both USB and BLE
+    # mode on PSRAM firmware. Smaller strips are only a fallback if this
+    # firmware somehow doesn't have PSRAM after all.
+    for h in (280, 140, 70, 40, 20, 10):
         gc.collect()
         try:
             buf = bytearray(W * h * 2)
@@ -88,7 +85,6 @@ def alloc_fb(force_small=False):
             buf = None
             fb = None
     raise MemoryError("no RAM for display buffer")
-
 
 
 # ============================================================
@@ -109,6 +105,11 @@ _bt_err = ""
 _bt_tried = False
 _bt_dirty = False
 _bt_bonds = {}
+_adv_on = False          # True while we are advertising
+_adv_t = 0               # last time we (re)started advertising
+_bg_conn_t = None        # when the current background connection began
+_bg_pair_t = 0           # last time we asked the PC to secure the link
+_bt_stat = ""            # status text shown on the password screen
 
 # Standard keyboard: 1 modifier byte, 1 reserved byte, 6 key codes
 _HID_MAP = bytes([
@@ -152,8 +153,7 @@ def load_mode():
         _type_mode = "usb"
 
 
-''')
-_P.append(r'''def save_mode():
+def save_mode():
     try:
         with open(MODE_FILE, "w") as f:
             f.write(_type_mode)
@@ -187,13 +187,15 @@ def bt_save():
 
 
 def _bt_irq_inner(event, data):
-    global _bt_conn, _bt_enc, _bt_pass, _bt_dirty
+    global _bt_conn, _bt_enc, _bt_pass, _bt_dirty, _adv_on
     if event == 1:                      # central connected
         _bt_conn = data[0]
         _bt_enc = False
+        _adv_on = False                 # advertising stops on connect
     elif event == 2:                    # central disconnected
         _bt_conn = None
         _bt_enc = False
+        _adv_on = False
     elif event == 28:                   # encryption update
         _bt_enc = bool(data[1])
     elif event == 29:                   # get secret
@@ -323,15 +325,15 @@ def bt_init():
             (U(0x2A50), bluetooth.FLAG_READ),
         ))
         hid = (U(0x1812), (
-            (U(0x2A4A), bluetooth.FLAG_READ),
-            (U(0x2A4B), bluetooth.FLAG_READ),
-            (U(0x2A4C), bluetooth.FLAG_WRITE_NO_RESPONSE),
-            (U(0x2A4D), bluetooth.FLAG_READ | bluetooth.FLAG_NOTIFY
-             | getattr(bluetooth, "FLAG_READ_ENCRYPTED", 0x0200),
-             ((U(0x2908), bluetooth.FLAG_READ),)),
-            (U(0x2A4E), bluetooth.FLAG_READ
-             | bluetooth.FLAG_WRITE_NO_RESPONSE),
-        ))
+         (U(0x2A4A), bluetooth.FLAG_READ),
+         (U(0x2A4B), bluetooth.FLAG_READ),
+         (U(0x2A4C), bluetooth.FLAG_WRITE_NO_RESPONSE),
+         (U(0x2A4D), bluetooth.FLAG_READ | bluetooth.FLAG_NOTIFY,
+         ((U(0x2908), bluetooth.FLAG_READ),)),
+         (U(0x2A4E), bluetooth.FLAG_READ
+     | bluetooth.FLAG_WRITE_NO_RESPONSE),
+))
+
         bat = (U(0x180F), ((U(0x2A19),
                             bluetooth.FLAG_READ | bluetooth.FLAG_NOTIFY),))
         d, h, b = ble.gatts_register_services((dis, hid, bat))
@@ -365,15 +367,18 @@ def bt_init():
         return False
 
 
-''')
-_P.append(r'''def bt_adv():
+def bt_adv():
+    global _adv_on
     name = BT_NAME.encode()
     adv = b"\x02\x01\x06" + b"\x03\x19\xc1\x03" + b"\x03\x03\x12\x18"
     resp = bytes([len(name) + 1, 9]) + name
     _ble.gap_advertise(100000, adv_data=adv, resp_data=resp)
+    _adv_on = True
 
 
 def bt_adv_stop():
+    global _adv_on
+    _adv_on = False
     try:
         _ble.gap_advertise(None)
     except Exception:
@@ -382,20 +387,58 @@ def bt_adv_stop():
 
 def bt_type_text(s):
     try:
-        time.sleep_ms(300)      # let Windows finish subscribing
+        # Give Windows time to subscribe to HID notifications.
+        time.sleep_ms(300)
+
+        if _bt_conn is None:
+            return False
+
         for ch in s:
             code, shift = hid_code(ch)
+
             if code is None:
                 continue
-            _ble.gatts_notify(_bt_conn, _bt_h,
-                              bytes([2 if shift else 0, 0, code, 0, 0, 0, 0, 0]))
+
+            # Key down
+            _ble.gatts_notify(
+                _bt_conn,
+                _bt_h,
+                bytes([
+                    2 if shift else 0,
+                    0,
+                    code,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0
+                ])
+            )
+
             time.sleep_ms(40)
-            _ble.gatts_notify(_bt_conn, _bt_h, bytes(8))
-            time.sleep_ms(120)
+
+            # Key up
+            _ble.gatts_notify(
+                _bt_conn,
+                _bt_h,
+                bytes(8)
+            )
+
+            time.sleep_ms(80)
+
+        # Always send a final key-up report.
+        _ble.gatts_notify(
+            _bt_conn,
+            _bt_h,
+            bytes(8)
+        )
+
         return True
+
     except Exception as e:
         print("BLE type error:", e)
         return False
+
 
 
 def bt_reset():
@@ -412,19 +455,81 @@ def bt_reset():
             pass
 
 
-''')
-_P.append(r'''# Bluetooth must start FIRST, before the display and touch hardware take
-# their share of RAM (starting it later failed with "active OSError 5").
-# In Bluetooth mode the display buffer is kept small (10-row strips).
+def bt_drop():
+    # Stop advertising and cut any live link (used when locking).
+    if _ble is None:
+        return
+    bt_adv_stop()
+    if _bt_conn is not None:
+        try:
+            _ble.gap_disconnect(_bt_conn)
+        except Exception:
+            pass
+
+
+def bt_bg():
+    # Background BLE connection manager.
+    # No pairing/security wait is performed here.
+    #
+    # While unlocked and in BLE mode:
+    #   - advertise when no PC is connected
+    #   - keep an existing connection
+    #   - report ready immediately after connection
+
+    global _adv_t, _bg_conn_t, _bt_stat, D
+
+    if _ble is None or _type_mode != "ble":
+        return
+
+    now = time.ticks_ms()
+
+    if _ke is None:
+        if _adv_on:
+            bt_adv_stop()
+        stat = ""
+
+    elif _bt_conn is None:
+        _bg_conn_t = None
+
+        if not _adv_on and time.ticks_diff(now, _adv_t) > 3000:
+            _adv_t = now
+            try:
+                bt_adv()
+            except Exception as e:
+                print("bg adv:", e)
+
+        stat = "Bluetooth: waiting for PC"
+
+    else:
+        if _bg_conn_t is None:
+            _bg_conn_t = now
+
+        # IMPORTANT:
+        # No gap_pair()
+        # No _bt_enc wait
+        # No "securing..." state.
+        stat = "Bluetooth: ready"
+
+    if stat != _bt_stat:
+        _bt_stat = stat
+        if S == "detail":
+            D = True
+
+
+
+# Bluetooth still starts before the display claims its buffer. This is no
+# longer required to dodge "active OSError 5" (PSRAM gives plenty of room
+# for both), but starting the radio early still means it's ready sooner,
+# so a "type" request just after boot doesn't have to wait on bt_init().
 load_mode()
 if _type_mode == "ble":
     bt_init()
-alloc_fb(force_small=(_type_mode == "ble"))
+alloc_fb()
 gc.collect()
+_boot_free = gc.mem_free()
+track_mem()
 
-
-''')
-_P.append(r'''# ============================================================
+# ============================================================
 # PINS
 # ============================================================
 
@@ -588,7 +693,10 @@ def render_screen(draw_function):
         begin_strip(y)
         draw_function()
         end_strip()
-        time.sleep_ms(1)   # let the Bluetooth task run between strips
+        if STRIP_H < H:
+            time.sleep_ms(1)   # let the Bluetooth task run between strips
+            # (only needed when STRIP_H < H; with the full-size buffer
+            # there's only one "strip" per screen, so this never fires)
 
 
 # ============================================================
@@ -596,8 +704,7 @@ def render_screen(draw_function):
 # ============================================================
 
 
-''')
-_P.append(r'''def visible(y, h=1):
+def visible(y, h=1):
     return y + h > _current_y and y < _current_y + STRIP_H
 
 
@@ -751,8 +858,7 @@ def hmac256(key, msg):
     return sha256(opad + inner).digest()
 
 
-''')
-_P.append(r'''def ct_eq(a, b):
+def ct_eq(a, b):
     if len(a) != len(b):
         return False
     r = 0
@@ -917,8 +1023,7 @@ def hid_init():
         return False
 
 
-''')
-_P.append(r'''def _kb_send(k, down, up):
+def _kb_send(k, down, up):
     # send_keys returns False when the report could not be queued in time;
     # retry then, so a key-up is never lost.
     for _ in range(40):
@@ -1010,8 +1115,8 @@ _rx = ""
 _link_add = False
 _link_del = -1
 _link_reveal = -1
+_pending = None
 _BUSY = ("review", "confdel", "confreveal", "pin")
-
 
 
 def link_send(d):
@@ -1095,8 +1200,7 @@ def link_cmd(m):
             link_send({"r": "reveal", "err": "bad"})
 
 
-''')
-_P.append(r'''def link_poll():
+def link_poll():
     global _rx
     while _poll.poll(0):
         ch = sys.stdin.read(1)
@@ -1240,8 +1344,7 @@ def lockout_wait(secs):
         time.sleep_ms(100)
 
 
-''')
-_P.append(r'''def open_pin():
+def open_pin():
     global _pin_digits, _pin_bad, _pin_dx, _pin_mode, _boot_pen_done
     _pin_digits = ""
     _pin_bad = False
@@ -1379,8 +1482,7 @@ def icon(name, cx, cy):
             fill_circle(cx + kx, yy + 1, 5, INK)
 
 
-''')
-_P.append(r'''def draw_home_strip():
+def draw_home_strip():
     draw_sky_strip()
     fill_circle(26, 30, 13, HALO2)
     fill_circle(26, 30, 9, SUN)
@@ -1474,95 +1576,92 @@ def do_type_ble(s):
         return
     # Bluetooth callbacks run Python code in the Bluetooth task, at the same
     # time as this program. Pause the garbage collector while Bluetooth is
-    # busy so the two can never collide in memory.
+    # busy so the two can never collide in memory. Still worth doing even
+    # with PSRAM - this is a concurrency guard, not a memory-size one.
     gc.collect()
     gc.disable()
     try:
         _do_type_ble(s)
     finally:
         gc.enable()
+    track_mem()
     gc.collect()
 
 
 def _do_type_ble(s):
     global _bt_pass
-    if not (_bt_conn is not None and _bt_enc):
-        _bt_pass = 0
-        while touch() is not None:
-            time.sleep_ms(20)
+
+    # Wait for the TYPE button touch to be released.
+    while touch() is not None:
+        time.sleep_ms(20)
+
+    _bt_pass = 0
+
+    # ------------------------------------------------------------
+    # If not connected, advertise and wait for connection.
+    # ------------------------------------------------------------
+    if _bt_conn is None:
         try:
             bt_adv()
         except Exception as e:
             show_msg("BLE error", clip(str(e), 28))
-            time.sleep_ms(2200)
+            time.sleep_ms(2000)
             go("detail")
             return
+
+        show_msg("Waiting for PC", "Connect to DigiCure")
+
         end = time.ticks_add(time.ticks_ms(), 60000)
-        last = None
-        conn_t = None
-        stuck = False
-        saved_dev = bool(_bt_bonds)
-        while not (_bt_conn is not None and _bt_enc):
-            if time.ticks_diff(end, time.ticks_ms()) <= 0 \
-                    or touch() is not None:
+
+        while _bt_conn is None:
+            if time.ticks_diff(end, time.ticks_ms()) <= 0:
                 bt_adv_stop()
-                show_msg("Not paired")
-                while touch() is not None:
-                    time.sleep_ms(20)
-                time.sleep_ms(800)
+                show_msg("Not connected")
+                time.sleep_ms(1000)
                 go("detail")
                 return
-            has = _bt_conn is not None
-            if not has:
-                conn_t = None
-            elif conn_t is None:
-                conn_t = time.ticks_ms()
-            if has and not stuck \
-                    and time.ticks_diff(time.ticks_ms(), conn_t) > 10000:
-                # Connected but never secured: the PC and the board disagree
-                # about the saved pairing. Forget the board's side; the PC
-                # must forget DigiCure too, then pair again.
-                stuck = True
-                bt_reset()
-                time.sleep_ms(500)
-                try:
-                    bt_adv()
-                except Exception:
-                    pass
-            state = (_bt_pass, has, stuck)
-            if state != last:
-                last = state
-                if _bt_pass:
-                    show_msg("Enter on PC", "%06d" % _bt_pass, "Tap to cancel")
-                elif stuck:
-                    show_msg("Not secure", "On PC: remove DigiCure",
-                             "then add it again")
-                elif has:
-                    show_msg("Connected", "Securing link...", "Tap to cancel")
-                elif saved_dev:
-                    show_msg("Connecting...", "to your saved device",
-                             "Tap to cancel")
-                else:
-                    show_msg("Pair 'DigiCure'", "Open PC Bluetooth",
-                             "Tap to cancel")
-            time.sleep_ms(200)
-        _bt_pass = 0
-    t0 = time.ticks_ms()
-    while time.ticks_diff(time.ticks_ms(), _bt_last_ms) < 1500 \
-            and time.ticks_diff(time.ticks_ms(), t0) < 8000:
-        time.sleep_ms(100)
-    for n in (3, 2, 1):
-        show_msg("Click field", "Typing in %d" % n)
-        time.sleep_ms(1000)
+
+            time.sleep_ms(100)
+
+    # ------------------------------------------------------------
+    # CONNECTED
+    #
+    # Do NOT wait for encryption.
+    # Do NOT call gap_pair().
+    # ------------------------------------------------------------
+
+    bt_adv_stop()
+
+    show_msg("Connected", "Preparing keyboard...")
+    time.sleep_ms(500)
+
+    # Make sure connection still exists.
+    if _bt_conn is None:
+        show_msg("Disconnected")
+        time.sleep_ms(800)
+        go("detail")
+        return
+
+    # ------------------------------------------------------------
+    # TYPE
+    # ------------------------------------------------------------
+
+    show_msg("Typing...")
+    time.sleep_ms(300)
+
     ok = bt_type_text(s)
-    bt_finish()
-    show_msg("Typed" if ok else "Not connected")
-    time.sleep_ms(900)
+
+    if ok:
+        show_msg("Typed")
+    else:
+        show_msg("Typing failed")
+
+    time.sleep_ms(1000)
     go("detail")
 
 
-''')
-_P.append(r'''def do_type(what):
+
+def do_type(what):
     e = entries[_cur]
     s = e["u"] if what == "u" else e["p"]
     if not s:
@@ -1650,19 +1749,37 @@ def last_err():
 
 def draw_about_strip():
     draw_sky_strip()
-    textc("DigiCure v10", 16, CREAM, 2)
+    textc("DigiCure v12", 14, CREAM, 2)
+    # Memory numbers (taken once, after a collect, so "used" = live data)
+    track_mem()
     gc.collect()
-    text("Entries: %d" % len(entries), 14, 64, CREAM, 1)
-    text("Free RAM: %d KB" % (gc.mem_free() // 1024), 14, 82, CREAM, 1)
-    text("Saved keys: %d" % bt_saved_count(), 14, 100, CREAM, 1)
+    free = gc.mem_free()
+    used = gc.mem_alloc()
+    total = free + used
+    low = min(_min_free, free)
+    y = 40
+    text("Entries: %d" % len(entries), 14, y, CREAM, 1)
+    y += 16
+    text("Used: %d / %d KB" % (used // 1024, total // 1024), 14, y, CREAM, 1)
+    y += 16
+    text("Free: %d KB  Low: %d KB" % (free // 1024, low // 1024),
+         14, y, CREAM, 1)
+    y += 16
+    text("Screen buf: %d KB" % (len(buf) // 1024), 14, y, CREAM, 1)
+    y += 16
+    text("Saved keys: %d" % bt_saved_count(), 14, y, CREAM, 1)
+    y += 16
     text("Display: %s" % (
         "full frame" if STRIP_H == H else "%d-row strips" % STRIP_H),
-        14, 118, CREAM, 1)
-    text("BT: " + clip(last_bt(), 24), 14, 136, CREAM, 1)
-    text("Reset code: %s" % machine.reset_cause(), 14, 154, CREAM, 1)
-    text("Mode: %s" % _type_mode, 14, 172, CREAM, 1)
-    text("Err: " + clip(last_err(), 23), 14, 190, CREAM, 1)
-    btn("back", 60, 220, 120, 40, "BACK")
+        14, y, CREAM, 1)
+    y += 16
+    text("BT: " + clip(last_bt(), 24), 14, y, CREAM, 1)
+    y += 16
+    text("Reset: %s  Mode: %s" % (machine.reset_cause(), _type_mode),
+         14, y, CREAM, 1)
+    y += 16
+    text("Err: " + clip(last_err(), 23), 14, y, CREAM, 1)
+    btn("back", 60, 226, 120, 36, "BACK")
 
 
 DRAW = {
@@ -1679,8 +1796,7 @@ DRAW = {
 }
 
 
-''')
-_P.append(r'''# ============================================================
+# ============================================================
 # TAP HANDLING
 # ============================================================
 
@@ -1824,8 +1940,7 @@ def dispatch(bid):
             go("settings")
 
 
-''')
-_P.append(r'''# ============================================================
+# ============================================================
 # MAIN
 # ============================================================
 
@@ -1846,6 +1961,7 @@ def main():
         tap = pt is not None and not was_down
         was_down = pt is not None
         link_poll()
+        track_mem()
         if _bt_dirty:
             bt_flush()
 
@@ -1885,9 +2001,3 @@ except Exception as e:
         pass
     sys.print_exception(e)
     raise
-''')
-
-_g = globals()
-for _i in range(len(_P)):
-    exec(_P[_i], _g)
-    gc.collect()
